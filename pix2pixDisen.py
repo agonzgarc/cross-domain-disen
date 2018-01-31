@@ -34,7 +34,7 @@ parser.add_argument("--save_freq", type=int, default=5000, help="save model ever
 parser.add_argument("--separable_conv", action="store_true", help="use separable convolutions in the generator")
 parser.add_argument("--aspect_ratio", type=float, default=1.0, help="aspect ratio of output images (width/height)")
 parser.add_argument("--lab_colorization", action="store_true", help="split input image into brightness (A) and color (B)")
-parser.add_argument("--batch_size", type=int, default=1, help="number of images in batch")
+parser.add_argument("--batch_size", type=int, default=2, help="number of images in batch")
 parser.add_argument("--which_direction", type=str, default="AtoB", choices=["AtoB", "BtoA"])
 parser.add_argument("--ngf", type=int, default=64, help="number of generator filters in first conv layer")
 parser.add_argument("--ndf", type=int, default=64, help="number of discriminator filters in first conv layer")
@@ -315,6 +315,8 @@ def main():
         inputsY = deprocess(examples.inputsY)
         outputsX2Y = deprocess(model.outputsX2Y)
         outputsY2X = deprocess(model.outputsY2X)
+        auto_outputX = deprocess(model.auto_outputX)
+        auto_outputY = deprocess(model.auto_outputY)
 
     def convert(image):
         if a.aspect_ratio != 1.0:
@@ -337,6 +339,12 @@ def main():
     with tf.name_scope("convert_outputsY2X"):
         converted_outputsY2X = convert(outputsY2X)
 
+    with tf.name_scope("convert_auto_outputsX"):
+        converted_auto_outputX = convert(auto_outputX)
+
+    with tf.name_scope("convert_auto_outputsY"):
+        converted_auto_outputY = convert(auto_outputY)
+
     with tf.name_scope("encode_images"):
         display_fetches = {
             "paths": examples.paths,
@@ -344,20 +352,30 @@ def main():
             "inputsY": tf.map_fn(tf.image.encode_png, converted_inputsY, dtype=tf.string, name="inputY_pngs"),
             "outputsX2Y": tf.map_fn(tf.image.encode_png, converted_outputsX2Y, dtype=tf.string, name="outputX2Y_pngs"),
             "outputsY2X": tf.map_fn(tf.image.encode_png, converted_outputsY2X, dtype=tf.string, name="outputY2X_pngs"),
+            "auto_outputsX": tf.map_fn(tf.image.encode_png,
+                                       converted_auto_outputX, dtype=tf.string, name="auto_outputX_pngs"),
+            "auto_outputsY": tf.map_fn(tf.image.encode_png,
+                                       converted_auto_outputY, dtype=tf.string, name="auto_outputY_pngs"),
         }
 
     # summaries
-    with tf.name_scope("inputsX_summary"):
+    with tf.name_scope("X1_input_summary"):
         tf.summary.image("inputsX", converted_inputsX)
 
-    with tf.name_scope("inputsY_summary"):
+    with tf.name_scope("Y1_input_summary"):
         tf.summary.image("inputsY", converted_inputsY)
 
-    with tf.name_scope("outputsX2Y_summary"):
+    with tf.name_scope("X2Y_output_summary"):
         tf.summary.image("outputsX2Y", converted_outputsX2Y)
 
-    with tf.name_scope("outputsY2X_summary"):
+    with tf.name_scope("Y2X_outpu2_summary"):
         tf.summary.image("outputsY2X", converted_outputsY2X)
+
+    with tf.name_scope("X_autoencoder_summary"):
+        tf.summary.image("auto_outputX", converted_auto_outputX)
+
+    with tf.name_scope("Y_autoencoder_summary"):
+        tf.summary.image("auto_outputY", converted_auto_outputY)
 
     with tf.name_scope("predict_realX2Y_summary"):
         tf.summary.image("predict_realX2Y", tf.image.convert_image_dtype(model.predict_realX2Y, dtype=tf.uint8))
@@ -377,15 +395,17 @@ def main():
     tf.summary.scalar("generatorY2X_loss_GAN", model.genY2X_loss_GAN)
     tf.summary.scalar("generatorX2Y_loss_L1", model.genX2Y_loss_L1)
     tf.summary.scalar("generatorY2X_loss_L1", model.genY2X_loss_L1)
+    tf.summary.scalar("autoencoderX_loss", model.autoencoderX_loss)
+    tf.summary.scalar("autoencoderY_loss", model.autoencoderY_loss)
 
-    for var in tf.trainable_variables():
-        tf.summary.histogram(var.op.name + "/values", var)
+    #for var in tf.trainable_variables():
+        #tf.summary.histogram(var.op.name + "/values", var)
 
-    for grad, var in model.discrimX2Y_grads_and_vars + model.genX2Y_grads_and_vars:
-        tf.summary.histogram(var.op.name + "/gradientsX2Y", grad)
+    #for grad, var in model.discrimX2Y_grads_and_vars + model.genX2Y_grads_and_vars:
+        #tf.summary.histogram(var.op.name + "/gradientsX2Y", grad)
 
-    for grad, var in model.discrimY2X_grads_and_vars + model.genY2X_grads_and_vars:
-        tf.summary.histogram(var.op.name + "/gradientsY2X", grad)
+    #for grad, var in model.discrimY2X_grads_and_vars + model.genY2X_grads_and_vars:
+        #tf.summary.histogram(var.op.name + "/gradientsY2X", grad)
 
     with tf.name_scope("parameter_count"):
         parameter_count = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
@@ -447,6 +467,7 @@ def main():
                     fetches["genY2X_loss_GAN"] = model.genY2X_loss_GAN
                     fetches["genX2Y_loss_L1"] = model.genX2Y_loss_L1
                     fetches["genY2X_loss_L1"] = model.genY2X_loss_L1
+                    fetches["autoencoderX_loss"] = model.genY2X_loss_L1
 
                 if should(a.summary_freq):
                     fetches["summary"] = sv.summary_op
@@ -482,6 +503,7 @@ def main():
                     print("genY2X_loss_GAN", results["genY2X_loss_GAN"])
                     print("genX2Y_loss_L1", results["genX2Y_loss_L1"])
                     print("genY2X_loss_L1", results["genY2X_loss_L1"])
+                    print("autoencoderX_loss", results["genY2X_loss_L1"])
 
                 if should(a.save_freq):
                     print("saving model")
