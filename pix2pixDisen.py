@@ -14,7 +14,7 @@ import math
 import time
 
 from ops import *
-from model import create_model
+from modelDisen import create_model
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input_dir", help="path to folder containing images")
@@ -54,7 +54,7 @@ a = parser.parse_args()
 EPS = 1e-12
 CROP_SIZE = 256
 
-Examples = collections.namedtuple("Examples", "paths, inputs, targets, count, steps_per_epoch")
+Examples = collections.namedtuple("Examples", "paths, inputsX, inputsY, count, steps_per_epoch")
 
 
 def load_examples():
@@ -106,12 +106,13 @@ def load_examples():
             a_images = preprocess(raw_input[:,:width//2,:])
             b_images = preprocess(raw_input[:,width//2:,:])
 
-    if a.which_direction == "AtoB":
-        inputs, targets = [a_images, b_images]
-    elif a.which_direction == "BtoA":
-        inputs, targets = [b_images, a_images]
-    else:
-        raise Exception("invalid direction")
+    inputsX, inputsY = [a_images, b_images]
+    #if a.which_direction == "AtoB":
+        #inputs, targets = [a_images, b_images]
+    #elif a.which_direction == "BtoA":
+        #inputs, targets = [b_images, a_images]
+    #else:
+    #    raise Exception("invalid direction")
 
     # synchronize seed for image operations so that we do the same operations to both
     # input and output images
@@ -132,19 +133,19 @@ def load_examples():
             raise Exception("scale size cannot be less than crop size")
         return r
 
-    with tf.name_scope("input_images"):
-        input_images = transform(inputs)
+    with tf.name_scope("inputX_images"):
+        inputX_images = transform(inputsX)
 
-    with tf.name_scope("target_images"):
-        target_images = transform(targets)
+    with tf.name_scope("inputY_images"):
+        inputY_images = transform(inputsY)
 
-    paths_batch, inputs_batch, targets_batch = tf.train.batch([paths, input_images, target_images], batch_size=a.batch_size)
+    paths_batch, inputsX_batch, inputsY_batch = tf.train.batch([paths,inputX_images,inputY_images], batch_size=a.batch_size)
     steps_per_epoch = int(math.ceil(len(input_paths) / a.batch_size))
 
     return Examples(
         paths=paths_batch,
-        inputs=inputs_batch,
-        targets=targets_batch,
+        inputsX=inputsX_batch,
+        inputsY=inputsY_batch,
         count=len(input_paths),
         steps_per_epoch=steps_per_epoch,
     )
@@ -290,7 +291,7 @@ def main():
     print("examples count = %d" % examples.count)
 
     # inputs and targets are [batch_size, height, width, channels]
-    model = create_model(examples.inputs, examples.targets, a)
+    model = create_model(examples.inputsX, examples.inputsY, a)
 
     # undo colorization splitting on images that we use for display/output
     if a.lab_colorization:
@@ -310,9 +311,10 @@ def main():
         else:
             raise Exception("invalid direction")
     else:
-        inputs = deprocess(examples.inputs)
-        targets = deprocess(examples.targets)
-        outputs = deprocess(model.outputs)
+        inputsX = deprocess(examples.inputsX)
+        inputsY = deprocess(examples.inputsY)
+        outputsX2Y = deprocess(model.outputsX2Y)
+        outputsY2X = deprocess(model.outputsY2X)
 
     def convert(image):
         if a.aspect_ratio != 1.0:
@@ -323,48 +325,67 @@ def main():
         return tf.image.convert_image_dtype(image, dtype=tf.uint8, saturate=True)
 
     # reverse any processing on images so they can be written to disk or displayed to user
-    with tf.name_scope("convert_inputs"):
-        converted_inputs = convert(inputs)
+    with tf.name_scope("convert_inputsX"):
+        converted_inputsX = convert(inputsX)
 
-    with tf.name_scope("convert_targets"):
-        converted_targets = convert(targets)
+    with tf.name_scope("convert_inputsY"):
+        converted_inputsY = convert(inputsY)
 
-    with tf.name_scope("convert_outputs"):
-        converted_outputs = convert(outputs)
+    with tf.name_scope("convert_outputsX2Y"):
+        converted_outputsX2Y = convert(outputsX2Y)
+
+    with tf.name_scope("convert_outputsY2X"):
+        converted_outputsY2X = convert(outputsY2X)
 
     with tf.name_scope("encode_images"):
         display_fetches = {
             "paths": examples.paths,
-            "inputs": tf.map_fn(tf.image.encode_png, converted_inputs, dtype=tf.string, name="input_pngs"),
-            "targets": tf.map_fn(tf.image.encode_png, converted_targets, dtype=tf.string, name="target_pngs"),
-            "outputs": tf.map_fn(tf.image.encode_png, converted_outputs, dtype=tf.string, name="output_pngs"),
+            "inputsX": tf.map_fn(tf.image.encode_png, converted_inputsX, dtype=tf.string, name="inputX_pngs"),
+            "inputsY": tf.map_fn(tf.image.encode_png, converted_inputsY, dtype=tf.string, name="inputY_pngs"),
+            "outputsX2Y": tf.map_fn(tf.image.encode_png, converted_outputsX2Y, dtype=tf.string, name="outputX2Y_pngs"),
+            "outputsY2X": tf.map_fn(tf.image.encode_png, converted_outputsY2X, dtype=tf.string, name="outputY2X_pngs"),
         }
 
     # summaries
-    with tf.name_scope("inputs_summary"):
-        tf.summary.image("inputs", converted_inputs)
+    with tf.name_scope("inputsX_summary"):
+        tf.summary.image("inputsX", converted_inputsX)
 
-    with tf.name_scope("targets_summary"):
-        tf.summary.image("targets", converted_targets)
+    with tf.name_scope("inputsY_summary"):
+        tf.summary.image("inputsY", converted_inputsY)
 
-    with tf.name_scope("outputs_summary"):
-        tf.summary.image("outputs", converted_outputs)
+    with tf.name_scope("outputsX2Y_summary"):
+        tf.summary.image("outputsX2Y", converted_outputsX2Y)
 
-    with tf.name_scope("predict_real_summary"):
-        tf.summary.image("predict_real", tf.image.convert_image_dtype(model.predict_real, dtype=tf.uint8))
+    with tf.name_scope("outputsY2X_summary"):
+        tf.summary.image("outputsY2X", converted_outputsY2X)
 
-    with tf.name_scope("predict_fake_summary"):
-        tf.summary.image("predict_fake", tf.image.convert_image_dtype(model.predict_fake, dtype=tf.uint8))
+    with tf.name_scope("predict_realX2Y_summary"):
+        tf.summary.image("predict_realX2Y", tf.image.convert_image_dtype(model.predict_realX2Y, dtype=tf.uint8))
 
-    tf.summary.scalar("discriminator_loss", model.discrim_loss)
-    tf.summary.scalar("generator_loss_GAN", model.gen_loss_GAN)
-    tf.summary.scalar("generator_loss_L1", model.gen_loss_L1)
+    with tf.name_scope("predict_realY2X_summary"):
+        tf.summary.image("predict_realY2X", tf.image.convert_image_dtype(model.predict_realY2X, dtype=tf.uint8))
+
+    with tf.name_scope("predict_fakeX2Y_summary"):
+        tf.summary.image("predict_fakeX2Y", tf.image.convert_image_dtype(model.predict_fakeX2Y, dtype=tf.uint8))
+
+    with tf.name_scope("predict_fakeY2X_summary"):
+        tf.summary.image("predict_fakeY2X", tf.image.convert_image_dtype(model.predict_fakeY2X, dtype=tf.uint8))
+
+    tf.summary.scalar("discriminatorX2Y_loss", model.discrimX2Y_loss)
+    tf.summary.scalar("discriminatorY2X_loss", model.discrimY2X_loss)
+    tf.summary.scalar("generatorX2Y_loss_GAN", model.genX2Y_loss_GAN)
+    tf.summary.scalar("generatorY2X_loss_GAN", model.genY2X_loss_GAN)
+    tf.summary.scalar("generatorX2Y_loss_L1", model.genX2Y_loss_L1)
+    tf.summary.scalar("generatorY2X_loss_L1", model.genY2X_loss_L1)
 
     for var in tf.trainable_variables():
         tf.summary.histogram(var.op.name + "/values", var)
 
-    for grad, var in model.discrim_grads_and_vars + model.gen_grads_and_vars:
-        tf.summary.histogram(var.op.name + "/gradients", grad)
+    for grad, var in model.discrimX2Y_grads_and_vars + model.genX2Y_grads_and_vars:
+        tf.summary.histogram(var.op.name + "/gradientsX2Y", grad)
+
+    for grad, var in model.discrimY2X_grads_and_vars + model.genY2X_grads_and_vars:
+        tf.summary.histogram(var.op.name + "/gradientsY2X", grad)
 
     with tf.name_scope("parameter_count"):
         parameter_count = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
@@ -420,9 +441,12 @@ def main():
                 }
 
                 if should(a.progress_freq):
-                    fetches["discrim_loss"] = model.discrim_loss
-                    fetches["gen_loss_GAN"] = model.gen_loss_GAN
-                    fetches["gen_loss_L1"] = model.gen_loss_L1
+                    fetches["discrimX2Y_loss"] = model.discrimX2Y_loss
+                    fetches["discrimY2X_loss"] = model.discrimY2X_loss
+                    fetches["genX2Y_loss_GAN"] = model.genX2Y_loss_GAN
+                    fetches["genY2X_loss_GAN"] = model.genY2X_loss_GAN
+                    fetches["genX2Y_loss_L1"] = model.genX2Y_loss_L1
+                    fetches["genY2X_loss_L1"] = model.genY2X_loss_L1
 
                 if should(a.summary_freq):
                     fetches["summary"] = sv.summary_op
@@ -452,9 +476,12 @@ def main():
                     rate = (step + 1) * a.batch_size / (time.time() - start)
                     remaining = (max_steps - step) * a.batch_size / rate
                     print("progress  epoch %d  step %d  image/sec %0.1f  remaining %dm" % (train_epoch, train_step, rate, remaining / 60))
-                    print("discrim_loss", results["discrim_loss"])
-                    print("gen_loss_GAN", results["gen_loss_GAN"])
-                    print("gen_loss_L1", results["gen_loss_L1"])
+                    print("discrimX2Y_loss", results["discrimX2Y_loss"])
+                    print("discrimY2X_loss", results["discrimY2X_loss"])
+                    print("genX2Y_loss_GAN", results["genX2Y_loss_GAN"])
+                    print("genY2X_loss_GAN", results["genY2X_loss_GAN"])
+                    print("genX2Y_loss_L1", results["genX2Y_loss_L1"])
+                    print("genY2X_loss_L1", results["genY2X_loss_L1"])
 
                 if should(a.save_freq):
                     print("saving model")

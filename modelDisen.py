@@ -41,8 +41,8 @@ def create_model(inputsX, inputsY, a):
         outputsX2Y = create_generator(inputsX, out_channels, a)
 
     with tf.variable_scope("generatorY2X"):
-        out_channels = int(targets.get_shape()[-1])
-        outputsY2X = create_generator(inputs, out_channels, a)
+        out_channels = int(targetsY.get_shape()[-1])
+        outputsY2X = create_generator(inputsY, out_channels, a)
 
     # create two copies of discriminator, one for real pairs and one for fake pairs
     # they share the same underlying variables
@@ -152,7 +152,7 @@ def create_model(inputsX, inputsY, a):
         genY2X_grads_and_vars=genY2X_grads_and_vars,
         outputsX2Y=outputsX2Y,
         outputsY2X=outputsY2X,
-        train=tf.group(update_losses, incr_global_step, gen_train),
+        train=tf.group(update_losses, incr_global_step, genX2Y_train, genY2X_train),
     )
 
 
