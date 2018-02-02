@@ -14,13 +14,18 @@ import math
 import time
 
 from ops import *
-from generatorDecoder import *
-from generatorEncoder import *
+from generatorDecoderMNIST import *
+from generatorEncoderMNIST import *
 #from generatorNoSkip import *
-from discriminator import *
+#from discriminator import *
+from discriminatorWGANGP import *
+
+import pdb
 
 EPS = 1e-12
-CROP_SIZE = 256
+CROP_SIZE = 32
+LOSS = 'wgan-gp'
+LAMBDA = 10
 
 Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
                                auto_outputX, auto_outputY\
@@ -31,9 +36,10 @@ Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
                                genX2Y_loss_GAN, genY2X_loss_GAN,\
                                genX2Y_loss_L1, genY2X_loss_L1,\
                                genX2Y_grads_and_vars, genY2X_grads_and_vars,\
-                               autoencoderX_loss, autoencoderY_loss\
+                               autoencoderX_loss, autoencoderY_loss,\
                                autoencoderX_grads_and_vars, autoencoderY_grads_and_vars,\
-                               train")
+                               feat_recon_loss, feat_recon_grads_and_vars,\
+                               train, train_disc")
 
 def create_model(inputsX, inputsY, a):
 
@@ -113,46 +119,105 @@ def create_model(inputsX, inputsY, a):
             # 2x [batch, height, width, channels] => [batch, 30, 30, 1]
             predict_fakeY2X = create_discriminator(inputsY, outputsY2X, a)
 
-
-
     ######### LOSSES
 
+    if LOSS == 'wgan-gp':
 
-    with tf.name_scope("discriminatorX2Y_loss"):
-        # minimizing -tf.log will try to get inputs to 1
-        # predict_real => 1
-        # predict_fake => 0
-        discrimX2Y_loss = tf.reduce_mean(-(tf.log(predict_realX2Y + EPS) +
-                                           tf.log(1 - predict_fakeX2Y + EPS)))
+        with tf.name_scope("generatorX2Y_loss"):
+            # predict_fake => 1
+            # abs(targets - outputs) => 0
+            genX2Y_loss_GAN = -tf.reduce_mean(predict_fakeX2Y)
+            genX2Y_loss_L1 = tf.reduce_mean(tf.abs(targetsX - outputsX2Y))
+            # Same parameter for loss weighting for now
+            genX2Y_loss = genX2Y_loss_GAN * a.gan_weight + genX2Y_loss_L1 * a.l1_weight
 
-    with tf.name_scope("discriminatorY2X_loss"):
-        # minimizing -tf.log will try to get inputs to 1
-        # predict_real => 1
-        # predict_fake => 0
-        discrimY2X_loss = tf.reduce_mean(-(tf.log(predict_realY2X + EPS) +
-                                           tf.log(1 - predict_fakeY2X + EPS)))
+        with tf.name_scope("discriminatorX2Y_loss"):
+            # minimizing -tf.log will try to get inputs to 1
+            # predict_real => 1
+            # predict_fake => 0
+            discrimX2Y_loss = tf.reduce_mean(predict_fakeX2Y) - tf.reduce_mean(predict_realX2Y)
+            alpha = tf.random_uniform(shape=[a.batch_size,1,1,1], minval=0., maxval=1.)
+            differences = outputsX2Y-targetsX
+            #pdb.set_trace()
+            interpolates = targetsX + (alpha*differences)
+            with tf.variable_scope("discriminatorX2Y", reuse=True):
+                gradients = tf.gradients(create_discriminator(interpolates,targetsX,a),
+                             [interpolates])[0]
+            slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
+                                           reduction_indices=[1]))
+            gradient_penalty = tf.reduce_mean((slopes-1.)**2)
+            discrimX2Y_loss += LAMBDA*gradient_penalty
 
-    with tf.name_scope("generatorX2Y_loss"):
-        # predict_fake => 1
-        # abs(targets - outputs) => 0
-        genX2Y_loss_GAN = tf.reduce_mean(-tf.log(predict_fakeX2Y + EPS))
-        genX2Y_loss_L1 = tf.reduce_mean(tf.abs(targetsX - outputsX2Y))
-        # Same parameter for loss weighting for now
-        genX2Y_loss = genX2Y_loss_GAN * a.gan_weight + genX2Y_loss_L1 * a.l1_weight
+        with tf.name_scope("generatorY2X_loss"):
+            # predict_fake => 1
+            # abs(targets - outputs) => 0
+            genY2X_loss_GAN = -tf.reduce_mean(predict_fakeY2X)
+            genY2X_loss_L1 = tf.reduce_mean(tf.abs(targetsY - outputsY2X))
+            # Same parameter for loss weighting for now
+            genY2X_loss = genY2X_loss_GAN * a.gan_weight + genX2Y_loss_L1 * a.l1_weight
 
-    with tf.name_scope("generatorY2X_loss"):
-        # predict_fake => 1
-        # abs(targets - outputs) => 0
-        genY2X_loss_GAN = tf.reduce_mean(-tf.log(predict_fakeY2X + EPS))
-        genY2X_loss_L1 = tf.reduce_mean(tf.abs(targetsY - outputsY2X))
-        # Same parameter for loss weighting for now
-        genY2X_loss = genY2X_loss_GAN * a.gan_weight + genY2X_loss_L1 * a.l1_weight
+        with tf.name_scope("discriminatorY2X_loss"):
+            # minimizing -tf.log will try to get inputs to 1
+            # predict_real => 1
+            # predict_fake => 0
+            discrimY2X_loss = tf.reduce_mean(predict_fakeY2X) - tf.reduce_mean(predict_realY2X)
+            alpha = tf.random_uniform(shape=[a.batch_size,1,1,1], minval=0., maxval=1.)
+            differences = outputsY2X-targetsY
+            #pdb.set_trace()
+            interpolates = targetsY + (alpha*differences)
+            with tf.variable_scope("discriminatorY2X", reuse=True):
+                gradients = tf.gradients(create_discriminator(interpolates,targetsY,a),
+                             [interpolates])[0]
+            slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
+                                           reduction_indices=[1]))
+            gradient_penalty = tf.reduce_mean((slopes-1.)**2)
+            discrimY2X_loss += LAMBDA*gradient_penalty
+
+
+    else:
+
+
+        with tf.name_scope("discriminatorX2Y_loss"):
+            # minimizing -tf.log will try to get inputs to 1
+            # predict_real => 1
+            # predict_fake => 0
+            discrimX2Y_loss = tf.reduce_mean(-(tf.log(predict_realX2Y + EPS) +
+                                               tf.log(1 - predict_fakeX2Y + EPS)))
+
+        with tf.name_scope("discriminatorY2X_loss"):
+            # minimizing -tf.log will try to get inputs to 1
+            # predict_real => 1
+            # predict_fake => 0
+            discrimY2X_loss = tf.reduce_mean(-(tf.log(predict_realY2X + EPS) +
+                                               tf.log(1 - predict_fakeY2X + EPS)))
+        with tf.name_scope("generatorX2Y_loss"):
+            # predict_fake => 1
+            # abs(targets - outputs) => 0
+            genX2Y_loss_GAN = tf.reduce_mean(-tf.log(predict_fakeX2Y + EPS))
+            genX2Y_loss_L1 = tf.reduce_mean(tf.abs(targetsX - outputsX2Y))
+            # Same parameter for loss weighting for now
+            genX2Y_loss = genX2Y_loss_GAN * a.gan_weight + genX2Y_loss_L1 * a.l1_weight
+
+        with tf.name_scope("generatorY2X_loss"):
+            # predict_fake => 1
+            # abs(targets - outputs) => 0
+            genY2X_loss_GAN = tf.reduce_mean(-tf.log(predict_fakeY2X + EPS))
+            genY2X_loss_L1 = tf.reduce_mean(tf.abs(targetsY - outputsY2X))
+            # Same parameter for loss weighting for now
+            genY2X_loss = genY2X_loss_GAN * a.gan_weight  + genY2X_loss_L1 * a.l1_weight
 
     with tf.name_scope("autoencoderX_loss"):
         autoencoderX_loss = a.l1_weight*tf.reduce_mean(tf.abs(auto_outputX-inputsX))
 
     with tf.name_scope("autoencoderY_loss"):
         autoencoderY_loss = a.l1_weight*tf.reduce_mean(tf.abs(auto_outputY-inputsY))
+
+
+    with tf.name_scope("feat_recon_loss"):
+        feat_recon_loss = a.l1_weight*tf.reduce_mean(tf.abs(sR_X2Y-sR_Y2X))
+
+    ######### OPTIMIZERS
+
 
     with tf.name_scope("discriminatorX2Y_train"):
         discrimX2Y_tvars = [var for var in tf.trainable_variables() if var.name.startswith("discriminatorX2Y")]
@@ -197,12 +262,21 @@ def create_model(inputsX, inputsY, a):
         autoencoderY_train = autoencoderY_optim.apply_gradients(autoencoderY_grads_and_vars)
 
 
+    with tf.name_scope("feat_recon_train"):
+        feat_recon_tvars = [var for var in tf.trainable_variables() if
+                              var.name.startswith("generatorX2Y_encoder") or
+                              var.name.startswith("generatorY2X_encoder")]
+        feat_recon_optim = tf.train.AdamOptimizer(a.lr, a.beta1)
+        feat_recon_grads_and_vars = feat_recon_optim.compute_gradients(feat_recon_loss, var_list=feat_recon_tvars)
+        feat_recon_train = feat_recon_optim.apply_gradients(feat_recon_grads_and_vars)
+
 
     ema = tf.train.ExponentialMovingAverage(decay=0.99)
     update_losses = ema.apply([discrimX2Y_loss, discrimY2X_loss,
                                genX2Y_loss_GAN, genY2X_loss_GAN,
                                genX2Y_loss_L1, genY2X_loss_L1,
-                               autoencoderX_loss, autoencoderY_loss])
+                               autoencoderX_loss, autoencoderY_loss,
+                               feat_recon_loss])
 
     global_step = tf.train.get_or_create_global_step()
     incr_global_step = tf.assign(global_step, global_step+1)
@@ -230,8 +304,12 @@ def create_model(inputsX, inputsY, a):
         auto_outputY = auto_outputY,
         autoencoderY_loss=autoencoderY_loss,
         autoencoderY_grads_and_vars=autoencoderY_grads_and_vars,
+        feat_recon_loss=feat_recon_loss,
+        feat_recon_grads_and_vars=feat_recon_grads_and_vars,
         train=tf.group(update_losses, incr_global_step, genX2Y_train,
-                       genY2X_train, autoencoderX_train, autoencoderY_train),
+                       genY2X_train, autoencoderX_train, autoencoderY_train,
+                       feat_recon_train),
+        train_disc = tf.group(discrimX2Y_train,discrimY2X_train)
     )
 
 

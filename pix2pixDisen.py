@@ -25,7 +25,7 @@ parser.add_argument("--checkpoint", default=None, help="directory with checkpoin
 
 parser.add_argument("--max_steps", type=int, help="number of training steps (0 to disable)")
 parser.add_argument("--max_epochs", type=int, help="number of training epochs")
-parser.add_argument("--summary_freq", type=int, default=100, help="update summaries every summary_freq steps")
+parser.add_argument("--summary_freq", type=int, default=30, help="update summaries every summary_freq steps")
 parser.add_argument("--progress_freq", type=int, default=50, help="display progress every progress_freq steps")
 parser.add_argument("--trace_freq", type=int, default=0, help="trace execution every trace_freq steps")
 parser.add_argument("--display_freq", type=int, default=0, help="write current training images every display_freq steps")
@@ -34,11 +34,11 @@ parser.add_argument("--save_freq", type=int, default=5000, help="save model ever
 parser.add_argument("--separable_conv", action="store_true", help="use separable convolutions in the generator")
 parser.add_argument("--aspect_ratio", type=float, default=1.0, help="aspect ratio of output images (width/height)")
 parser.add_argument("--lab_colorization", action="store_true", help="split input image into brightness (A) and color (B)")
-parser.add_argument("--batch_size", type=int, default=2, help="number of images in batch")
+parser.add_argument("--batch_size", type=int, default=10, help="number of images in batch")
 parser.add_argument("--which_direction", type=str, default="AtoB", choices=["AtoB", "BtoA"])
 parser.add_argument("--ngf", type=int, default=64, help="number of generator filters in first conv layer")
 parser.add_argument("--ndf", type=int, default=64, help="number of discriminator filters in first conv layer")
-parser.add_argument("--scale_size", type=int, default=286, help="scale images to this size before cropping to 256x256")
+parser.add_argument("--scale_size", type=int, default=32, help="scale images to this size before cropping to 256x256")
 parser.add_argument("--flip", dest="flip", action="store_true", help="flip images horizontally")
 parser.add_argument("--no_flip", dest="flip", action="store_false", help="don't flip images horizontally")
 parser.set_defaults(flip=True)
@@ -52,7 +52,8 @@ parser.add_argument("--output_filetype", default="png", choices=["png", "jpeg"])
 a = parser.parse_args()
 
 EPS = 1e-12
-CROP_SIZE = 256
+CROP_SIZE = 32
+CRITIC_ITERS = 3
 
 Examples = collections.namedtuple("Examples", "paths, inputsX, inputsY, count, steps_per_epoch")
 
@@ -360,34 +361,34 @@ def main():
 
     # summaries
     with tf.name_scope("X1_input_summary"):
-        tf.summary.image("inputsX", converted_inputsX)
+        tf.summary.image("inputsX", converted_inputsX,max_outputs=3)
 
     with tf.name_scope("Y1_input_summary"):
-        tf.summary.image("inputsY", converted_inputsY)
+        tf.summary.image("inputsY", converted_inputsY,max_outputs=3)
 
     with tf.name_scope("X2Y_output_summary"):
-        tf.summary.image("outputsX2Y", converted_outputsX2Y)
+        tf.summary.image("outputsX2Y", converted_outputsX2Y,max_outputs=3)
 
     with tf.name_scope("Y2X_outpu2_summary"):
-        tf.summary.image("outputsY2X", converted_outputsY2X)
+        tf.summary.image("outputsY2X", converted_outputsY2X,max_outputs=3)
 
     with tf.name_scope("X_autoencoder_summary"):
-        tf.summary.image("auto_outputX", converted_auto_outputX)
+        tf.summary.image("auto_outputX", converted_auto_outputX,max_outputs=3)
 
     with tf.name_scope("Y_autoencoder_summary"):
-        tf.summary.image("auto_outputY", converted_auto_outputY)
+        tf.summary.image("auto_outputY", converted_auto_outputY,max_outputs=3)
 
-    with tf.name_scope("predict_realX2Y_summary"):
-        tf.summary.image("predict_realX2Y", tf.image.convert_image_dtype(model.predict_realX2Y, dtype=tf.uint8))
+    #with tf.name_scope("predict_realX2Y_summary"):
+        #tf.summary.image("predict_realX2Y", tf.image.convert_image_dtype(model.predict_realX2Y, dtype=tf.uint8),max_outputs=3)
 
-    with tf.name_scope("predict_realY2X_summary"):
-        tf.summary.image("predict_realY2X", tf.image.convert_image_dtype(model.predict_realY2X, dtype=tf.uint8))
+    #with tf.name_scope("predict_realY2X_summary"):
+        #tf.summary.image("predict_realY2X", tf.image.convert_image_dtype(model.predict_realY2X, dtype=tf.uint8),max_outputs=3)
 
-    with tf.name_scope("predict_fakeX2Y_summary"):
-        tf.summary.image("predict_fakeX2Y", tf.image.convert_image_dtype(model.predict_fakeX2Y, dtype=tf.uint8))
+    #with tf.name_scope("predict_fakeX2Y_summary"):
+        #tf.summary.image("predict_fakeX2Y", tf.image.convert_image_dtype(model.predict_fakeX2Y, dtype=tf.uint8),max_outputs=3)
 
-    with tf.name_scope("predict_fakeY2X_summary"):
-        tf.summary.image("predict_fakeY2X", tf.image.convert_image_dtype(model.predict_fakeY2X, dtype=tf.uint8))
+    #with tf.name_scope("predict_fakeY2X_summary"):
+    #    tf.summary.image("predict_fakeY2X", tf.image.convert_image_dtype(model.predict_fakeY2X, dtype=tf.uint8),max_outputs=3)
 
     tf.summary.scalar("discriminatorX2Y_loss", model.discrimX2Y_loss)
     tf.summary.scalar("discriminatorY2X_loss", model.discrimY2X_loss)
@@ -397,6 +398,7 @@ def main():
     tf.summary.scalar("generatorY2X_loss_L1", model.genY2X_loss_L1)
     tf.summary.scalar("autoencoderX_loss", model.autoencoderX_loss)
     tf.summary.scalar("autoencoderY_loss", model.autoencoderY_loss)
+    tf.summary.scalar("feat_recon_loss", model.feat_recon_loss)
 
     #for var in tf.trainable_variables():
         #tf.summary.histogram(var.op.name + "/values", var)
@@ -454,6 +456,10 @@ def main():
                 if should(a.trace_freq):
                     options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                     run_metadata = tf.RunMetadata()
+
+                # Do many critic iterations for every step
+                #for i in range(CRITIC_ITERS):
+                    #sess.run(model.train_disc, options=options, run_metadata=run_metadata)
 
                 fetches = {
                     "train": model.train,
