@@ -37,9 +37,10 @@ def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
                 # since it is directly connected to the skip_layer
 
                 # Use here combination of shared and exclusive
-                input = tf.concat([sR,eR], axis=3)
+                input = tf.concat([sR,eR],axis=3)
             else:
-                input = tf.concat([layers[-1], layers[skip_layer]], axis=3)
+                #input = tf.concat([layers[-1], layers[skip_layer]], axis=3)
+                input = layers[-1]
 
             rectified = tf.nn.relu(input)
             # [batch, in_height, in_width, in_channels] => [batch, in_height*2, in_width*2, out_channels]
@@ -54,7 +55,8 @@ def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
     # decoder_1: [batch, 128, 128, ngf * 2] => [batch, 256, 256, generator_outputs_channels]
     with tf.variable_scope("decoder_1"):
         # This is for the skip connection
-        input = tf.concat([layers[-1], layers[0]], axis=3)
+        input = layers[-1]
+        #input = tf.concat([layers[-1], layers[0]], axis=3)
         rectified = tf.nn.relu(input)
         output = gen_deconv(rectified, generator_outputs_channels, a)
         output = tf.tanh(output)

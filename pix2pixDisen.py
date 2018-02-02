@@ -53,7 +53,7 @@ a = parser.parse_args()
 
 EPS = 1e-12
 CROP_SIZE = 32
-CRITIC_ITERS = 3
+CRITIC_ITERS = 5
 
 Examples = collections.namedtuple("Examples", "paths, inputsX, inputsY, count, steps_per_epoch")
 
@@ -457,9 +457,9 @@ def main():
                     options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                     run_metadata = tf.RunMetadata()
 
-                # Do many critic iterations for every step
+                ## Do many critic iterations for every step
                 #for i in range(CRITIC_ITERS):
-                    #sess.run(model.train_disc, options=options, run_metadata=run_metadata)
+                #    sess.run(model.train_disc, options=options, run_metadata=run_metadata)
 
                 fetches = {
                     "train": model.train,

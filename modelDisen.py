@@ -26,6 +26,7 @@ EPS = 1e-12
 CROP_SIZE = 32
 LOSS = 'wgan-gp'
 LAMBDA = 10
+OUTPUT_DIM = 3072 # 32X32X3
 
 Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
                                auto_outputX, auto_outputY\
@@ -124,28 +125,28 @@ def create_model(inputsX, inputsY, a):
     if LOSS == 'wgan-gp':
 
         with tf.name_scope("generatorX2Y_loss"):
-            # predict_fake => 1
-            # abs(targets - outputs) => 0
             genX2Y_loss_GAN = -tf.reduce_mean(predict_fakeX2Y)
             genX2Y_loss_L1 = tf.reduce_mean(tf.abs(targetsX - outputsX2Y))
             # Same parameter for loss weighting for now
             genX2Y_loss = genX2Y_loss_GAN * a.gan_weight + genX2Y_loss_L1 * a.l1_weight
 
         with tf.name_scope("discriminatorX2Y_loss"):
-            # minimizing -tf.log will try to get inputs to 1
-            # predict_real => 1
-            # predict_fake => 0
             discrimX2Y_loss = tf.reduce_mean(predict_fakeX2Y) - tf.reduce_mean(predict_realX2Y)
-            alpha = tf.random_uniform(shape=[a.batch_size,1,1,1], minval=0., maxval=1.)
-            differences = outputsX2Y-targetsX
+            alpha = tf.random_uniform(shape=[a.batch_size,1], minval=0., maxval=1.)
+            differences = tf.reshape(outputsX2Y,[-1,OUTPUT_DIM])-tf.reshape(targetsX,[-1,OUTPUT_DIM])
             #pdb.set_trace()
-            interpolates = targetsX + (alpha*differences)
+            interpolates = tf.reshape(targetsX, [-1,OUTPUT_DIM]) + (alpha*differences)
             with tf.variable_scope("discriminatorX2Y", reuse=True):
-                gradients = tf.gradients(create_discriminator(interpolates,targetsX,a),
+                gradients = tf.gradients(create_discriminator(inputsX,tf.reshape(interpolates,[-1,32,32,3]),a),
                              [interpolates])[0]
             slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
                                            reduction_indices=[1]))
             gradient_penalty = tf.reduce_mean((slopes-1.)**2)
+
+            tf.summary.histogram("X2Y/fake_score", predict_fakeX2Y)
+            tf.summary.histogram("X2Y/real_score", predict_realX2Y)
+            tf.summary.histogram("X2Y/disc_loss", discrimX2Y_loss )
+            tf.summary.histogram("X2Y/gradient_penaltyy", gradient_penalty)
             discrimX2Y_loss += LAMBDA*gradient_penalty
 
         with tf.name_scope("generatorY2X_loss"):
@@ -157,16 +158,12 @@ def create_model(inputsX, inputsY, a):
             genY2X_loss = genY2X_loss_GAN * a.gan_weight + genX2Y_loss_L1 * a.l1_weight
 
         with tf.name_scope("discriminatorY2X_loss"):
-            # minimizing -tf.log will try to get inputs to 1
-            # predict_real => 1
-            # predict_fake => 0
             discrimY2X_loss = tf.reduce_mean(predict_fakeY2X) - tf.reduce_mean(predict_realY2X)
-            alpha = tf.random_uniform(shape=[a.batch_size,1,1,1], minval=0., maxval=1.)
-            differences = outputsY2X-targetsY
-            #pdb.set_trace()
-            interpolates = targetsY + (alpha*differences)
+            alpha = tf.random_uniform(shape=[a.batch_size,1], minval=0., maxval=1.)
+            differences = tf.reshape(outputsY2X,[-1,OUTPUT_DIM])-tf.reshape(targetsY,[-1,OUTPUT_DIM])
+            interpolates = tf.reshape(targetsY,[-1,OUTPUT_DIM]) + (alpha*differences)
             with tf.variable_scope("discriminatorY2X", reuse=True):
-                gradients = tf.gradients(create_discriminator(interpolates,targetsY,a),
+                gradients = tf.gradients(create_discriminator(inputsY,tf.reshape(interpolates,[-1,32,32,3]),a),
                              [interpolates])[0]
             slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
                                            reduction_indices=[1]))
