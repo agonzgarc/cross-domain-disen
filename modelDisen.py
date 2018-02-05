@@ -311,3 +311,36 @@ def create_model(inputsX, inputsY, a):
 
 
 
+    def swapBackground(sR_Y2X, eR_Y2X, auto_outputY, a):
+        bkg_ims_idx = tf.random_uniform([a.batch_size],minval=0,maxval=a.batch_size,dtype=tf.int32)
+        swapScoreBKG = 0
+        sR_Swap = tf.zeros_like(sR_Y2X)
+        eR_Swap = tf.zeros_like(eR_Y2X)
+
+        for i in range(0,a.batch_size):
+            s_curr = tf.reshape(,sR_Y2X[i,:],[1,sR_Y2X.shape[1],sR_Y2X.shape[2],sR_Y2X.shape[3]])
+
+            #print('I:'+str(i)+' paired with:'+str(bkg_ims_idx[i]))
+            # Image to swap cannot be current image
+            while bkg_ims_idx[i] == tf.Variable(i):
+                bkf_ims_idx[i] = tf.random_uniform([1],minval=0,maxval=self.batch_size,dtype=tf.int32)
+
+            s_rnd = tf.reshape(sR_Y2X[bkg_ims_idx[i],:],[1,sR_Y2X.shape[1],sR_Y2X.shape[2],sR_Y2X.shape[3]])
+            ex_rnd = tf.reshape(eR_Y2X[bkg_ims_idx[i],:],[1,eR_Y2X.shape[1],eR_Y2X.shape[2],eR_Y2X.shape[3]])
+
+            sR_Swap[i,:] = s_curr
+            eR_Swap[i,:] = ex_rnd
+
+           
+        with tf.name_scope("image_swapper_Y2X"):
+            with tf.variable_scope("generatorY2X_decoder", reuse=True):
+                    out_channels = int(auto_outputY.get_shape()[-1])
+                    im_swapped = create_generator_decoder(sR_Swap, eR_Swap, [], out_channels, a)
+
+        swapScoreBKG = tf.reduce_mean(tf.abs(auto_outputY[:,:4,:4,:] - im_swapped[:,:4,:4,:]))
+
+
+
+        return swapScoreBKG, im_swapped
+
+
