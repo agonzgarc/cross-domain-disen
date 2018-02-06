@@ -151,7 +151,6 @@ def load_examples():
         steps_per_epoch=steps_per_epoch,
     )
 
-
 def save_images(fetches, step=None):
     image_dir = os.path.join(a.output_dir, "images")
     if not os.path.exists(image_dir):
@@ -161,7 +160,9 @@ def save_images(fetches, step=None):
     for i, in_path in enumerate(fetches["paths"]):
         name, _ = os.path.splitext(os.path.basename(in_path.decode("utf8")))
         fileset = {"name": name, "step": step}
-        for kind in ["inputs", "outputs", "targets"]:
+        for kind in ["inputsX", "outputsX2Y", "outputsX2Yp",
+                     "auto_outputsX","im_swapped_X", "sel_auto_X","inputsY",
+                     "outputsY2X", "outputsY2Xp","auto_outputsY" ,"im_swapped_Y", "sel_auto_Y"]:
             filename = name + "-" + kind + ".png"
             if step is not None:
                 filename = "%08d-%s" % (step, filename)
@@ -183,7 +184,7 @@ def append_index(filesets, step=False):
         index.write("<html><body><table><tr>")
         if step:
             index.write("<th>step</th>")
-        index.write("<th>name</th><th>input</th><th>output</th><th>target</th></tr>")
+        index.write("<th>name</th><th>inX</th><th>out(1)</th><th>out(2)</th><th>auto</th><th>swap</th><th>randomimage</th><th>inY</th><th>out(1)</th><th>out(2)</th><th>auto</th><th>swap</th><th>rnd</th></tr>")
 
     for fileset in filesets:
         index.write("<tr>")
@@ -192,7 +193,9 @@ def append_index(filesets, step=False):
             index.write("<td>%d</td>" % fileset["step"])
         index.write("<td>%s</td>" % fileset["name"])
 
-        for kind in ["inputs", "outputs", "targets"]:
+        for kind in ["inputsX", "outputsX2Y", "outputsX2Yp",
+                     "auto_outputsX","im_swapped_X", "sel_auto_X","inputsY",
+                     "outputsY2X", "outputsY2Xp","auto_outputsY" ,"im_swapped_Y", "sel_auto_Y"]:
             index.write("<td><img src='images/%s'></td>" % fileset[kind])
 
         index.write("</tr>")
