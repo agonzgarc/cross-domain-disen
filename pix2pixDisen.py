@@ -318,6 +318,8 @@ def main():
         outputsY2X = deprocess(model.outputsY2X)
         outputsX2Yp = deprocess(model.outputsX2Yp)
         outputsY2Xp = deprocess(model.outputsY2Xp)
+        outputs_exclusiveX2Y = deprocess(model.outputs_exclusiveX2Y)
+        outputs_exclusiveY2X = deprocess(model.outputs_exclusiveY2X)
         auto_outputX = deprocess(model.auto_outputX)
         auto_outputY = deprocess(model.auto_outputY)
         im_swapped_X = deprocess(model.im_swapped_X)
@@ -352,6 +354,12 @@ def main():
     with tf.name_scope("convert_outputsY2Xp"):
         converted_outputsY2Xp = convert(outputsY2Xp)
 
+    with tf.name_scope("convert_outputs_exclusiveX2Y"):
+        converted_outputs_exclusiveX2Y = convert(outputs_exclusiveX2Y)
+
+    with tf.name_scope("convert_outputs_exclusiveY2X"):
+        converted_outputs_exclusiveY2X = convert(outputs_exclusiveY2X)
+
     with tf.name_scope("convert_auto_outputsX"):
         converted_auto_outputX = convert(auto_outputX)
 
@@ -383,6 +391,12 @@ def main():
             "outputsY2Xp": tf.map_fn(tf.image.encode_png,
                                      converted_outputsY2Xp, dtype=tf.string,
                                      name="outputY2Xp_pngs"),
+            "outputs_exclusiveX2Y": tf.map_fn(tf.image.encode_png,
+                                              converted_outputs_exclusiveX2Y,
+                                              dtype=tf.string, name="output_exclusiveX2Y_pngs"),
+            "outputs_exclusiveY2X": tf.map_fn(tf.image.encode_png,
+                                              converted_outputs_exclusiveY2X,
+                                              dtype=tf.string, name="output_exclusiveY2X_pngs"),
             "auto_outputsX": tf.map_fn(tf.image.encode_png,
                                        converted_auto_outputX, dtype=tf.string, name="auto_outputX_pngs"),
             "auto_outputsY": tf.map_fn(tf.image.encode_png,
@@ -427,9 +441,15 @@ def main():
         tf.summary.image("sel_auto_X", converted_sel_auto_X,max_outputs=3)
 
 
-    with tf.name_scope("zOtherNoise_output_summary"):
+    with tf.name_scope("zotherNoise_output_summary"):
         tf.summary.image("outputsX2Yp", converted_outputsX2Yp,max_outputs=3)
         tf.summary.image("outputsY2Xp", converted_outputsY2Xp,max_outputs=3)
+
+    with tf.name_scope("zzexclusive_X2Y_summary"):
+        tf.summary.image("outputsX2Y", converted_outputs_exclusiveX2Y,max_outputs=3)
+
+    with tf.name_scope("zzexclusive_Y2X_summary"):
+        tf.summary.image("outputsY2X", converted_outputs_exclusiveY2X,max_outputs=3)
 
     #with tf.name_scope("predict_realX2Y_summary"):
         #tf.summary.image("predict_realX2Y", tf.image.convert_image_dtype(model.predict_realX2Y, dtype=tf.uint8),max_outputs=3)
@@ -449,6 +469,10 @@ def main():
     tf.summary.scalar("generatorY2X_loss_GAN", model.genY2X_loss_GAN)
     tf.summary.scalar("generatorX2Y_loss_L1", model.genX2Y_loss_L1)
     tf.summary.scalar("generatorY2X_loss_L1", model.genY2X_loss_L1)
+    tf.summary.scalar("generator_exclusiveX2Y_loss", model.gen_exclusiveX2Y_loss)
+    tf.summary.scalar("discriminator_exclusiveX2Y_loss", model.discrim_exclusiveX2Y_loss)
+    tf.summary.scalar("generator_exclusiveY2X_loss", model.gen_exclusiveY2X_loss)
+    tf.summary.scalar("discriminator_exclusiveY2X_loss", model.discrim_exclusiveY2X_loss)
     tf.summary.scalar("autoencoderX_loss", model.autoencoderX_loss)
     tf.summary.scalar("autoencoderY_loss", model.autoencoderY_loss)
     tf.summary.scalar("feat_recon_loss", model.feat_recon_loss)
