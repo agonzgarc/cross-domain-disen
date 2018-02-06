@@ -316,8 +316,14 @@ def main():
         inputsY = deprocess(examples.inputsY)
         outputsX2Y = deprocess(model.outputsX2Y)
         outputsY2X = deprocess(model.outputsY2X)
+        outputsX2Yp = deprocess(model.outputsX2Yp)
+        outputsY2Xp = deprocess(model.outputsY2Xp)
         auto_outputX = deprocess(model.auto_outputX)
         auto_outputY = deprocess(model.auto_outputY)
+        im_swapped_X = deprocess(model.im_swapped_X)
+        sel_auto_X = deprocess(model.sel_auto_X)
+        im_swapped_Y = deprocess(model.im_swapped_Y)
+        sel_auto_Y = deprocess(model.sel_auto_Y)
 
     def convert(image):
         if a.aspect_ratio != 1.0:
@@ -340,11 +346,29 @@ def main():
     with tf.name_scope("convert_outputsY2X"):
         converted_outputsY2X = convert(outputsY2X)
 
+    with tf.name_scope("convert_outputsX2Yp"):
+        converted_outputsX2Yp = convert(outputsX2Yp)
+
+    with tf.name_scope("convert_outputsY2Xp"):
+        converted_outputsY2Xp = convert(outputsY2Xp)
+
     with tf.name_scope("convert_auto_outputsX"):
         converted_auto_outputX = convert(auto_outputX)
 
     with tf.name_scope("convert_auto_outputsY"):
         converted_auto_outputY = convert(auto_outputY)
+
+    with tf.name_scope("convert_im_swapped_Y"):
+        converted_im_swapped_Y = convert(im_swapped_Y)
+
+    with tf.name_scope("convert_sel_auto_Y"):
+        converted_sel_auto_Y= convert(sel_auto_Y)
+
+    with tf.name_scope("convert_im_swapped_X"):
+        converted_im_swapped_X = convert(im_swapped_X)
+
+    with tf.name_scope("convert_sel_auto_X"):
+        converted_sel_auto_X= convert(sel_auto_X)
 
     with tf.name_scope("encode_images"):
         display_fetches = {
@@ -353,10 +377,26 @@ def main():
             "inputsY": tf.map_fn(tf.image.encode_png, converted_inputsY, dtype=tf.string, name="inputY_pngs"),
             "outputsX2Y": tf.map_fn(tf.image.encode_png, converted_outputsX2Y, dtype=tf.string, name="outputX2Y_pngs"),
             "outputsY2X": tf.map_fn(tf.image.encode_png, converted_outputsY2X, dtype=tf.string, name="outputY2X_pngs"),
+            "outputsX2Yp": tf.map_fn(tf.image.encode_png,
+                                     converted_outputsX2Yp, dtype=tf.string,
+                                     name="outputX2Yp_pngs"),
+            "outputsY2Xp": tf.map_fn(tf.image.encode_png,
+                                     converted_outputsY2Xp, dtype=tf.string,
+                                     name="outputY2Xp_pngs"),
             "auto_outputsX": tf.map_fn(tf.image.encode_png,
                                        converted_auto_outputX, dtype=tf.string, name="auto_outputX_pngs"),
             "auto_outputsY": tf.map_fn(tf.image.encode_png,
                                        converted_auto_outputY, dtype=tf.string, name="auto_outputY_pngs"),
+            "im_swapped_Y": tf.map_fn(tf.image.encode_png,
+                                       converted_im_swapped_Y, dtype=tf.string, name="im_swapped_Y_pngs"),
+            "sel_auto_Y": tf.map_fn(tf.image.encode_png,
+                                       converted_sel_auto_Y, dtype=tf.string, name="sel_auto_Y_pngs"),
+            "im_swapped_X": tf.map_fn(tf.image.encode_png,
+                                       converted_im_swapped_X, dtype=tf.string, name="im_swapped_X_pngs"),
+            "sel_auto_X": tf.map_fn(tf.image.encode_png,
+                                       converted_sel_auto_X, dtype=tf.string, name="sel_auto_X_pngs"),
+
+
         }
 
     # summaries
@@ -377,6 +417,19 @@ def main():
 
     with tf.name_scope("Y_autoencoder_summary"):
         tf.summary.image("auto_outputY", converted_auto_outputY,max_outputs=3)
+
+    with tf.name_scope("swapped_1Y_summary"):
+        tf.summary.image("im_swapped_Y", converted_im_swapped_Y,max_outputs=3)
+        tf.summary.image("sel_auto_Y", converted_sel_auto_Y,max_outputs=3)
+
+    with tf.name_scope("swapped_2X_summary"):
+        tf.summary.image("im_swapped_X", converted_im_swapped_X,max_outputs=3)
+        tf.summary.image("sel_auto_X", converted_sel_auto_X,max_outputs=3)
+
+
+    with tf.name_scope("zOtherNoise_output_summary"):
+        tf.summary.image("outputsX2Yp", converted_outputsX2Yp,max_outputs=3)
+        tf.summary.image("outputsY2Xp", converted_outputsY2Xp,max_outputs=3)
 
     #with tf.name_scope("predict_realX2Y_summary"):
         #tf.summary.image("predict_realX2Y", tf.image.convert_image_dtype(model.predict_realX2Y, dtype=tf.uint8),max_outputs=3)
