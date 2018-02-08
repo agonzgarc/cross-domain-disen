@@ -47,6 +47,7 @@ Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
                                autoencoderX_loss, autoencoderY_loss,\
                                autoencoderX_grads_and_vars, autoencoderY_grads_and_vars,\
                                feat_recon_loss, feat_recon_grads_and_vars,\
+                               ex_rep_loss,\
                                train, train_disc")
 
 def swapBackground(sR, eR, auto_output, which_direction, a):
@@ -99,9 +100,16 @@ def create_model(inputsX, inputsY, a):
     with tf.variable_scope("generatorY2X_encoder"):
         sR_Y2X, eR_Y2X, layers_Y2X = create_generator_encoder(inputsY, a)
 
-    #tf.summary.histogram("exclusiveX2Y", eR_X2Y)
-    mean_X2Y, var_X2Y = tf.nn.moments(eR_X2Y, axes=[0,1,2])
-    mean_Y2X, var_Y2X = tf.nn.moments(eR_Y2X, axes=[0,1,2])
+    tf.summary.histogram("sharedX2Y", sR_X2Y)
+    tf.summary.histogram("sharedY2X", sR_Y2X)
+    tf.summary.histogram("exclusiveX2Y", eR_X2Y)
+    tf.summary.histogram("exclusiveY2X", eR_Y2X)
+    #mean_X2Y, var_X2Y = tf.nn.moments(eR_X2Y, axes=[0,1,2])
+    #mean_Y2X, var_Y2X = tf.nn.moments(eR_Y2X, axes=[0,1,2])
+    mean_X2Y = 0.0
+    var_X2Y = 1.0
+    mean_Y2X = 0.0
+    var_Y2X = 1.0
 
     # One copy of the decoder for the noise input, another for the correct
     # input for the autoencoder
@@ -237,7 +245,7 @@ def create_model(inputsX, inputsY, a):
         tf.summary.histogram("X2Y/fake_score", predict_fakeX2Y)
         tf.summary.histogram("X2Y/real_score", predict_realX2Y)
         tf.summary.histogram("X2Y/disc_loss", discrimX2Y_loss )
-        tf.summary.histogram("X2Y/gradient_penaltyy", gradient_penalty)
+        tf.summary.histogram("X2Y/gradient_penalty", gradient_penalty)
         discrimX2Y_loss += LAMBDA*gradient_penalty
 
     with tf.name_scope("generatorY2X_loss"):
@@ -264,7 +272,7 @@ def create_model(inputsX, inputsY, a):
     with tf.name_scope("generator_exclusiveX2Y_loss"):
         gen_exclusiveX2Y_loss_GAN = -tf.reduce_mean(predict_fake_exclusiveX2Y)
         # Same parameter for loss weighting for now
-        gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_weight 
+        gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_weight/10.0
 
     with tf.name_scope("discriminator_exclusiveX2Y_loss"):
         discrim_exclusiveX2Y_loss = tf.reduce_mean(predict_fake_exclusiveX2Y) - tf.reduce_mean(predict_real_exclusiveX2Y)
@@ -283,7 +291,8 @@ def create_model(inputsX, inputsY, a):
     with tf.name_scope("generator_exclusiveY2X_loss"):
         gen_exclusiveY2X_loss_GAN = -tf.reduce_mean(predict_fake_exclusiveY2X)
         # Same parameter for loss weighting for now
-        gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_weight
+        gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_weight/10.0
+
 
     with tf.name_scope("discriminator_exclusiveY2X_loss"):
         discrim_exclusiveY2X_loss = tf.reduce_mean(predict_fake_exclusiveY2X) - tf.reduce_mean(predict_real_exclusiveY2X)
@@ -301,17 +310,18 @@ def create_model(inputsX, inputsY, a):
 
 
     with tf.name_scope("autoencoderX_loss"):
-        autoencoderX_loss = a.l1_weight*tf.reduce_mean(tf.abs(auto_outputX-inputsX))
+        autoencoderX_loss = 10*a.l1_weight*tf.reduce_mean(tf.abs(auto_outputX-inputsX))
 
     with tf.name_scope("autoencoderY_loss"):
-        autoencoderY_loss = a.l1_weight*tf.reduce_mean(tf.abs(auto_outputY-inputsY))
+        autoencoderY_loss = 10*a.l1_weight*tf.reduce_mean(tf.abs(auto_outputY-inputsY))
 
 
     with tf.name_scope("feat_recon_loss"):
         feat_recon_loss = a.l1_weight*tf.reduce_mean(tf.abs(sR_X2Y-sR_Y2X))
 
 
-
+    with tf.name_scope("ex_rep_loss"):
+        ex_rep_loss = a.l1_weight*(tf.reduce_mean(tf.abs(noise_X2Y-eR_X2Y)) + tf.reduce_mean(tf.abs(noise_Y2X-eR_Y2X)))
 
     ######### OPTIMIZERS
 
@@ -388,12 +398,14 @@ def create_model(inputsX, inputsY, a):
         autoencoderY_train = autoencoderY_optim.apply_gradients(autoencoderY_grads_and_vars)
 
 
+    # Add here loss on noise too, it acts on same set of variables
     with tf.name_scope("feat_recon_train"):
         feat_recon_tvars = [var for var in tf.trainable_variables() if
                               var.name.startswith("generatorX2Y_encoder") or
                               var.name.startswith("generatorY2X_encoder")]
         feat_recon_optim = tf.train.AdamOptimizer(a.lr, a.beta1)
-        feat_recon_grads_and_vars = feat_recon_optim.compute_gradients(feat_recon_loss, var_list=feat_recon_tvars)
+        feat_recon_grads_and_vars = feat_recon_optim.compute_gradients(feat_recon_loss + ex_rep_loss, var_list=feat_recon_tvars)
+        #feat_recon_grads_and_vars = feat_recon_optim.compute_gradients(feat_recon_loss, var_list=feat_recon_tvars)
         feat_recon_train = feat_recon_optim.apply_gradients(feat_recon_grads_and_vars)
 
 
@@ -402,7 +414,7 @@ def create_model(inputsX, inputsY, a):
                                genX2Y_loss_GAN, genY2X_loss_GAN,
                                genX2Y_loss_L1, genY2X_loss_L1,
                                autoencoderX_loss, autoencoderY_loss,
-                               feat_recon_loss,
+                               feat_recon_loss, ex_rep_loss,
                                discrim_exclusiveX2Y_loss, discrim_exclusiveY2X_loss,
                                gen_exclusiveX2Y_loss, gen_exclusiveY2X_loss])
 
@@ -438,12 +450,13 @@ def create_model(inputsX, inputsY, a):
         outputs_exclusiveX2Y=outputs_exclusiveX2Y,
         outputs_exclusiveY2X=outputs_exclusiveY2X,
         auto_outputX = auto_outputX,
-        autoencoderX_loss=autoencoderX_loss,
+        autoencoderX_loss=ema.average(autoencoderX_loss),
         autoencoderX_grads_and_vars=autoencoderX_grads_and_vars,
         auto_outputY = auto_outputY,
-        autoencoderY_loss=autoencoderY_loss,
+        autoencoderY_loss=ema.average(autoencoderY_loss),
         autoencoderY_grads_and_vars=autoencoderY_grads_and_vars,
-        feat_recon_loss=feat_recon_loss,
+        feat_recon_loss=ema.average(feat_recon_loss),
+        ex_rep_loss=ema.average(ex_rep_loss),
         feat_recon_grads_and_vars=feat_recon_grads_and_vars,
         train=tf.group(update_losses, incr_global_step, genX2Y_train,
                        genY2X_train, autoencoderX_train, autoencoderY_train,
