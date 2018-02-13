@@ -2,4 +2,7 @@
 tags
 test
 models
+checkpoints
 .idea
+data
+VGG_Model
