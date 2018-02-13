@@ -15,7 +15,11 @@ import time
 
 from ops import *
 
-def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
+@tf.RegisterGradient("ReverseGrad")
+def _reverse_grad(unused_op, grad):
+    return -1.0*grad
+
+def create_generator_decoder_exclusive(eR, layers, generator_outputs_channels, a):
 
     if a.red_images:
         layer_specs = [
@@ -36,14 +40,17 @@ def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
                     # since it is directly connected to the skip_layer
 
                     # Use here combination of shared and exclusive
-                    input = tf.concat([sR,eR],axis=3)
+                    #input = eR
+                    g = tf.get_default_graph()
+                    with g.gradient_override_map({"Identity": "ReverseGrad"}):
+                        input = tf.identity(eR)
                 else:
                     #input = tf.concat([layers[-1], layers[skip_layer]], axis=3)
                     input = layers[-1]
 
                 rectified = tf.nn.relu(input)
                 # [batch, in_height, in_width, in_channels] => [batch, in_height*2, in_width*2, out_channels]
-                output = gen_deconv(rectified, out_channels, a)
+                output = gen_deconv_upsample(rectified, out_channels, a)
                 output = batchnorm(output)
 
                 if dropout > 0.0:
@@ -57,7 +64,7 @@ def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
             input = layers[-1]
             #input = tf.concat([layers[-1], layers[0]], axis=3)
             rectified = tf.nn.relu(input)
-            output = gen_deconv(rectified, generator_outputs_channels, a)
+            output = gen_deconv_upsample(rectified, generator_outputs_channels, a)
             output = tf.tanh(output)
             layers.append(output)
 
@@ -73,6 +80,7 @@ def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
             (a.ngf, 0.0),       # decoder_2: [batch, 64, 64, ngf * 2 * 2] => [batch, 128, 128, ngf * 2]
         ]
 
+
         # Hard-coded, find better way to pass this value
         num_encoder_layers = 8
         for decoder_layer, (out_channels, dropout) in enumerate(layer_specs):
@@ -83,7 +91,10 @@ def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
                     # since it is directly connected to the skip_layer
 
                     # Use here combination of shared and exclusive
-                    input = tf.concat([sR,eR],axis=3)
+                    #input = eR
+                    g = tf.get_default_graph()
+                    with g.gradient_override_map({"Identity": "ReverseGrad"}):
+                        input = tf.identity(eR)
                 else:
                     #input = tf.concat([layers[-1], layers[skip_layer]], axis=3)
                     input = layers[-1]
@@ -98,7 +109,7 @@ def create_generator_decoder(sR,eR, layers, generator_outputs_channels, a):
 
                 layers.append(output)
 
-        # decoder_1: [batch, 128, 128, ngf * 2] => [batch, 256, 256, generator_outputs_channels]
+        # decoder_1: [batch, 16, 16, ngf] => [batch, 32, 32, generator_outputs_channels]
         with tf.variable_scope("decoder_1"):
             # This is for the skip connection
             input = layers[-1]

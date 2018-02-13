@@ -15,7 +15,7 @@ import time
 
 from ops import *
 from generatorDecoderMNIST import *
-from generatorEncoderMNIST import *
+from generatorEncoder import *
 from generatorDecoderExclusiveMNIST import *
 #from generatorNoSkip import *
 #from discriminator import *
@@ -24,10 +24,10 @@ from discriminatorWGANGP import *
 import pdb
 
 EPS = 1e-12
-CROP_SIZE = 32
 LOSS = 'wgan-gp'
 LAMBDA = 10
-OUTPUT_DIM = 3072 # 32X32X3
+OUTPUT_DIM = 196608 # 256x256x3
+
 
 Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
                                outputsX2Yp, outputsY2Xp,\
@@ -51,7 +51,6 @@ Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
                                train, train_disc")
 
 def swapBackground(sR, eR, auto_output, which_direction, a):
-        bkg_ims_idx = tf.random_uniform([a.batch_size],minval=0,maxval=a.batch_size,dtype=tf.int32)
         swapScoreBKG = 0
         sR_Swap = [] #tf.zeros_like(sR_Y2X)
         eR_Swap = [] #tf.zeros_like(eR_Y2X)
@@ -61,19 +60,16 @@ def swapBackground(sR, eR, auto_output, which_direction, a):
         for i in range(0,a.batch_size):
             s_curr = tf.reshape(sR[i,:],[sR.shape[1],sR.shape[2],sR.shape[3]])
 
-            #print('I:'+str(i)+' paired with:'+str(bkg_ims_idx[i]))
-            # Image to swap cannot be current image
-            with tf.Session() as sess:
-                while bkg_ims_idx[i].eval() == i:
-                    # Re-do whole batch, it doesn't matter if previous are different
-                    bkg_ims_idx = tf.random_uniform([a.batch_size],minval=0,maxval=a.batch_size,dtype=tf.int32)
+            bkg_ims_idx = random.randint(0,a.batch_size-1)
+            while bkg_ims_idx == i:
+                bkg_ims_idx = random.randint(0,a.batch_size-1)
 
-            ex_rnd = tf.reshape(eR[bkg_ims_idx[i],:],[eR.shape[1],eR.shape[2],eR.shape[3]])
+            ex_rnd = tf.reshape(eR[bkg_ims_idx,:],[eR.shape[1],eR.shape[2],eR.shape[3]])
 
             sR_Swap.append(s_curr)
             eR_Swap.append(ex_rnd)
 
-            sel_auto.append(auto_output[bkg_ims_idx[i],:])
+            sel_auto.append(auto_output[bkg_ims_idx,:])
 
         #pdb.set_trace()
         with tf.variable_scope("generator" + which_direction + "_decoder", reuse=True):
@@ -88,6 +84,10 @@ def swapBackground(sR, eR, auto_output, which_direction, a):
 
 
 def create_model(inputsX, inputsY, a):
+
+    # Modify values if images are reduced
+    if a.red_images:
+        OUTPUT_DIM = 3072 # 32X32X3
 
     # Target for inputsX is inputsY and vice versa
     targetsX = inputsY
@@ -104,8 +104,7 @@ def create_model(inputsX, inputsY, a):
     tf.summary.histogram("sharedY2X", sR_Y2X)
     tf.summary.histogram("exclusiveX2Y", eR_X2Y)
     tf.summary.histogram("exclusiveY2X", eR_Y2X)
-    #mean_X2Y, var_X2Y = tf.nn.moments(eR_X2Y, axes=[0,1,2])
-    #mean_Y2X, var_Y2X = tf.nn.moments(eR_Y2X, axes=[0,1,2])
+
     mean_X2Y = 0.0
     var_X2Y = 1.0
     mean_Y2X = 0.0
@@ -272,7 +271,8 @@ def create_model(inputsX, inputsY, a):
     with tf.name_scope("generator_exclusiveX2Y_loss"):
         gen_exclusiveX2Y_loss_GAN = -tf.reduce_mean(predict_fake_exclusiveX2Y)
         # Same parameter for loss weighting for now
-        gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_weight/10.0
+        gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_weight/10
+        #gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_exclusive_weight
 
     with tf.name_scope("discriminator_exclusiveX2Y_loss"):
         discrim_exclusiveX2Y_loss = tf.reduce_mean(predict_fake_exclusiveX2Y) - tf.reduce_mean(predict_real_exclusiveX2Y)
@@ -291,7 +291,8 @@ def create_model(inputsX, inputsY, a):
     with tf.name_scope("generator_exclusiveY2X_loss"):
         gen_exclusiveY2X_loss_GAN = -tf.reduce_mean(predict_fake_exclusiveY2X)
         # Same parameter for loss weighting for now
-        gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_weight/10.0
+        gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_weight/10
+        #gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_exclusive_weight
 
 
     with tf.name_scope("discriminator_exclusiveY2X_loss"):
@@ -310,10 +311,10 @@ def create_model(inputsX, inputsY, a):
 
 
     with tf.name_scope("autoencoderX_loss"):
-        autoencoderX_loss = 10*a.l1_weight*tf.reduce_mean(tf.abs(auto_outputX-inputsX))
+        autoencoderX_loss = a.l1_weight*tf.reduce_mean(tf.abs(auto_outputX-inputsX))
 
     with tf.name_scope("autoencoderY_loss"):
-        autoencoderY_loss = 10*a.l1_weight*tf.reduce_mean(tf.abs(auto_outputY-inputsY))
+        autoencoderY_loss = a.l1_weight*tf.reduce_mean(tf.abs(auto_outputY-inputsY))
 
 
     with tf.name_scope("feat_recon_loss"):
