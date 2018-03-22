@@ -13,11 +13,12 @@ import collections
 import math
 import time
 
+from maxpool import *
+import pdb
 
 def preprocess(image):
     with tf.name_scope("preprocess"):
-        # [0, 1] => [-1, 1]
-        return image * 2 - 1
+       return image * 2 - 1
 
 
 def deprocess(image):
@@ -66,20 +67,18 @@ def gen_conv(batch_input, out_channels, a):
     else:
         return tf.layers.conv2d(batch_input, out_channels, kernel_size=4, strides=(2, 2), padding="same", kernel_initializer=initializer)
 
-
-def gen_deconv_valid_padding(batch_input, out_channels, a):
+def gen_conv_pool(batch_input, out_channels, a):
     # [batch, in_height, in_width, in_channels] => [batch, out_height, out_width, out_channels]
     initializer = tf.random_normal_initializer(0, 0.02)
-    if a.separable_conv:
-        _b, h, w, _c = batch_input.shape
-        resized_input = tf.image.resize_images(batch_input, [h * 2, w * 2], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-        return tf.layers.separable_conv2d(resized_input, out_channels,
-                                          kernel_size=4, strides=(1, 1),
-                                          padding="valid", depthwise_initializer=initializer, pointwise_initializer=initializer)
-    else:
-        return tf.layers.conv2d_transpose(batch_input, out_channels,
-                                          kernel_size=4, strides=(2, 2),
-                                          padding="valid", kernel_initializer=initializer)
+    conv_res =  tf.layers.conv2d(batch_input, out_channels, kernel_size=4, strides=(1, 1), padding="same", kernel_initializer=initializer)
+    output, arg = tf.nn.max_pool_with_argmax(conv_res, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='maxpool')
+    return output, arg
+
+def gen_conv_unpool(batch_input, arg, out_channels, a):
+    # [batch, in_height, in_width, in_channels] => [batch, out_height, out_width, out_channels]
+    initializer = tf.random_normal_initializer(0, 0.02)
+    unpooled_input = unpool_with_argmax(batch_input, arg, name = 'maxunpool')
+    return tf.layers.conv2d(unpooled_input, out_channels, kernel_size=4, strides=(1, 1), padding="same", kernel_initializer=initializer)
 
 def gen_deconv(batch_input, out_channels, a):
     # [batch, in_height, in_width, in_channels] => [batch, out_height, out_width, out_channels]
@@ -90,6 +89,7 @@ def gen_deconv(batch_input, out_channels, a):
         return tf.layers.separable_conv2d(resized_input, out_channels, kernel_size=4, strides=(1, 1), padding="same", depthwise_initializer=initializer, pointwise_initializer=initializer)
     else:
         return tf.layers.conv2d_transpose(batch_input, out_channels, kernel_size=4, strides=(2, 2), padding="same", kernel_initializer=initializer)
+
 
 def gen_deconv_upsample(batch_input, out_channels, a):
     # [batch, in_height, in_width, in_channels] => [batch, out_height, out_width, out_channels]
@@ -108,6 +108,26 @@ def lrelu(x, a):
         # this block looks like it has 2 inputs on the graph unless we do this
         x = tf.identity(x)
         return (0.5 * (1 + a)) * x + (0.5 * (1 - a)) * tf.abs(x)
+
+
+def res_net(batch_input, depth):
+    initializer = tf.random_normal_initializer(0, 0.02)
+    conv1 = tf.layers.conv2d(batch_input, depth, kernel_size=4, strides=(1, 1), padding="same", kernel_initializer=initializer)
+    relu1 = lrelu(conv1,0.2)
+
+    conv2 = tf.layers.conv2d(relu1, depth, kernel_size=4, strides=(1, 1), padding="same", kernel_initializer=initializer)
+
+    output = batch_input + conv2
+    return output
+
+def n_res_blocks(batch_input, n=6):
+    depth = batch_input.get_shape()[3]
+    input = batch_input
+    for i in range(0,n):
+        output = res_net(input, depth)
+        input = output
+    return output
+
 
 
 def batchnorm(inputs):
@@ -210,5 +230,18 @@ def lab_to_rgb(lab):
             srgb_pixels = (rgb_pixels * 12.92 * linear_mask) + ((rgb_pixels ** (1/2.4) * 1.055) - 0.055) * exponential_mask
 
         return tf.reshape(srgb_pixels, tf.shape(lab))
+
+
+def weight_variable(shape):
+  """weight_variable generates a weight variable of a given shape."""
+  initial = tf.truncated_normal(shape, stddev=0.1)
+  return tf.Variable(initial)
+
+
+def bias_variable(shape):
+  """bias_variable generates a bias variable of a given shape."""
+  initial = tf.constant(0.1, shape=shape)
+  return tf.Variable(initial)
+
 
 

@@ -15,8 +15,8 @@ import time
 
 from ops import *
 
-def create_discriminator(discrim_inputs, discrim_targets, a):
-        n_layers = 2
+def create_discriminator(discrim_inputs, discrim_targets, a, n_layers=2):
+        #n_layers = 2
         layers = []
 
         # 2x [batch, height, width, in_channels] => [batch, height, width, in_channels * 2]

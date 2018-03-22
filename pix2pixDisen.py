@@ -12,13 +12,15 @@ import random
 import collections
 import math
 import time
+import scipy.io as sio
 
 from ops import *
 from modelDisen import create_model
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input_dir", help="path to folder containing images")
-parser.add_argument("--mode", required=True, choices=["train", "test", "export"])
+parser.add_argument("--mode", required=True, choices=["train", "test",
+                                                      "export","features"])
 parser.add_argument("--output_dir", required=True, help="where to put output files")
 parser.add_argument("--seed", type=int)
 parser.add_argument("--checkpoint", default=None, help="directory with checkpoint to resume training from or use for testing")
@@ -34,11 +36,11 @@ parser.add_argument("--save_freq", type=int, default=5000, help="save model ever
 parser.add_argument("--separable_conv", action="store_true", help="use separable convolutions in the generator")
 parser.add_argument("--aspect_ratio", type=float, default=1.0, help="aspect ratio of output images (width/height)")
 parser.add_argument("--lab_colorization", action="store_true", help="split input image into brightness (A) and color (B)")
-parser.add_argument("--batch_size", type=int, default=10, help="number of images in batch")
+parser.add_argument("--batch_size", type=int, default=32, help="number of images in batch")
 parser.add_argument("--which_direction", type=str, default="AtoB", choices=["AtoB", "BtoA"])
 parser.add_argument("--ngf", type=int, default=64, help="number of generator filters in first conv layer")
 parser.add_argument("--ndf", type=int, default=64, help="number of discriminator filters in first conv layer")
-parser.add_argument("--scale_size", type=int, default=286, help="scale images to this size before cropping to 256x256")
+parser.add_argument("--scale_size", type=int, default=132, help="scale images to this size before cropping to 256x256")
 parser.add_argument("--flip", dest="flip", action="store_true", help="flip images horizontally")
 parser.add_argument("--no_flip", dest="flip", action="store_false", help="don't flip images horizontally")
 parser.set_defaults(flip=False)
@@ -50,15 +52,20 @@ parser.add_argument("--gan_weight", type=float, default=1.0, help="weight on GAN
 # new arguments
 parser.add_argument("--gan_exclusive_weight", type=float, default=0.1, help="weight on GAN term for exclusive generator gradient")
 parser.add_argument("--red_images", action="store_true", help="reduced images used (32x32)")
+parser.add_argument("--gpu", type=float, default=-1, help="GPU to be used")
 
 # export options
 parser.add_argument("--output_filetype", default="png", choices=["png", "jpeg"])
 a = parser.parse_args()
 
+if a.gpu != -1:
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+    os.environ["CUDA_VISIBLE_DEVICES"]=str(a.gpu)
+
 EPS = 1e-12
 CRITIC_ITERS = 5
 
-CROP_SIZE = 256
+CROP_SIZE = 128
 if a.red_images:
     CROP_SIZE = 32
     a.scale_size = 32
@@ -171,6 +178,32 @@ def save_images(fetches, step=None):
         for kind in ["inputsX", "outputsX2Y", "outputsX2Yp",
                      "auto_outputsX","im_swapped_X", "sel_auto_X","inputsY",
                      "outputsY2X", "outputsY2Xp","auto_outputsY" ,"im_swapped_Y", "sel_auto_Y"]:
+        #for kind in ["inputsX", "outputsX2Y", "outputsX2Yp",
+                     #"auto_outputsX","inputsY",
+                     #"outputsY2X", "outputsY2Xp","auto_outputsY" ]:
+            filename = name + "-" + kind + ".png"
+            if step is not None:
+                filename = "%08d-%s" % (step, filename)
+            fileset[kind] = filename
+            out_path = os.path.join(image_dir, filename)
+            contents = fetches[kind][i]
+            with open(out_path, "wb") as f:
+                f.write(contents)
+        filesets.append(fileset)
+    return filesets
+
+def save_images_interpol(fetches, step=None):
+    image_dir = os.path.join(a.output_dir, "images")
+    if not os.path.exists(image_dir):
+        os.makedirs(image_dir)
+
+    filesets = []
+    for i, in_path in enumerate(fetches["paths"]):
+        name, _ = os.path.splitext(os.path.basename(in_path.decode("utf8")))
+        fileset = {"name": name, "step": step}
+        #for kind in ["inputsX","im", "interpX2Y_1", "interpX2Y_2","interpX2Y_2"]:
+        for kind in ["inputsX","im_int1"]:
+                     #"outputsY2X", "outputsY2Xp","auto_outputsY" ]:
             filename = name + "-" + kind + ".png"
             if step is not None:
                 filename = "%08d-%s" % (step, filename)
@@ -183,6 +216,41 @@ def save_images(fetches, step=None):
     return filesets
 
 
+def save_features(fetches, step=None):
+    image_dir = os.path.join(a.output_dir, "features")
+    if not os.path.exists(image_dir):
+        os.makedirs(image_dir)
+
+    filesets = []
+    for i, in_path in enumerate(fetches["paths"]):
+        name, _ = os.path.splitext(os.path.basename(in_path.decode("utf8")))
+        fileset = {"name": name, "step": step}
+        filename = name + ".mat"
+        out_path = os.path.join(image_dir, filename)
+        sio.savemat(out_path,{'inX':fetches["inputsX"][i],
+                             'inY':fetches["inputsY"][i],
+                             'sR_X2Y':fetches["sR_X2Y"][i],
+                             'sR_Y2X':fetches["sR_Y2X"][i],
+                             'eR_X2Y':fetches["eR_X2Y"][i],
+                             'eR_Y2X':fetches["eR_Y2X"][i]})
+
+
+        #for kind in ["inputsX", "sR_X2Y",
+                     #"inputsY", "sR_Y2X"]:
+        ##for kind in ["inputsX", "outputsX2Y", "outputsX2Yp",
+                     ##"auto_outputsX","inputsY",
+                     ##"outputsY2X", "outputsY2Xp","auto_outputsY" ]:
+            #filename = name + "-" + kind + ".png"
+            #if step is not None:
+                #filename = "%08d-%s" % (step, filename)
+            #fileset[kind] = filename
+            #contents = fetches[kind][i]
+            #with open(out_path, "wb") as f:
+                #f.write(contents)
+        #filesets.append(fileset)
+    return filesets
+
+
 def append_index(filesets, step=False):
     index_path = os.path.join(a.output_dir, "index.html")
     if os.path.exists(index_path):
@@ -192,6 +260,7 @@ def append_index(filesets, step=False):
         index.write("<html><body><table><tr>")
         if step:
             index.write("<th>step</th>")
+        #index.write("<th>name</th><th>inX</th><th>out(1)</th><th>out(2)</th><th>auto</th><th>inY</th><th>out(1)</th><th>out(2)</th><th>auto</th></tr>")
         index.write("<th>name</th><th>inX</th><th>out(1)</th><th>out(2)</th><th>auto</th><th>swap</th><th>randomimage</th><th>inY</th><th>out(1)</th><th>out(2)</th><th>auto</th><th>swap</th><th>rnd</th></tr>")
 
     for fileset in filesets:
@@ -200,11 +269,15 @@ def append_index(filesets, step=False):
         if step:
             index.write("<td>%d</td>" % fileset["step"])
         index.write("<td>%s</td>" % fileset["name"])
-
         for kind in ["inputsX", "outputsX2Y", "outputsX2Yp",
                      "auto_outputsX","im_swapped_X", "sel_auto_X","inputsY",
-                     "outputsY2X", "outputsY2Xp","auto_outputsY" ,"im_swapped_Y", "sel_auto_Y"]:
+                     "outputsY2X", "outputsY2Xp","auto_outputsY"
+                     ,"im_swapped_Y", "sel_auto_Y"]:
+
             index.write("<td><img src='images/%s'></td>" % fileset[kind])
+        #for kind in ["inputsX", "outputsX2Y", "outputsX2Yp",
+                     #"auto_outputsX","inputsY",
+                     #"outputsY2X", "outputsY2Xp","auto_outputsY"]:
 
         index.write("</tr>")
     return index_path
@@ -221,7 +294,7 @@ def main():
     if not os.path.exists(a.output_dir):
         os.makedirs(a.output_dir)
 
-    if a.mode == "test" or a.mode == "export":
+    if a.mode == "test" or a.mode == "export" or a.mode == "features":
         if a.checkpoint is None:
             raise Exception("checkpoint required for test mode")
 
@@ -337,6 +410,11 @@ def main():
         sel_auto_X = deprocess(model.sel_auto_X)
         im_swapped_Y = deprocess(model.im_swapped_Y)
         sel_auto_Y = deprocess(model.sel_auto_Y)
+        sR_X2Y = model.sR_X2Y
+        sR_Y2X = model.sR_Y2X
+        eR_X2Y = model.eR_X2Y
+        eR_Y2X = model.eR_Y2X
+        im_int1 = model.im_int1
 
     def convert(image):
         if a.aspect_ratio != 1.0:
@@ -345,6 +423,18 @@ def main():
             image = tf.image.resize_images(image, size=size, method=tf.image.ResizeMethod.BICUBIC)
 
         return tf.image.convert_image_dtype(image, dtype=tf.uint8, saturate=True)
+
+    def convert_fm(image):
+        FM_SIZE = 8
+        image = tf.reshape(image[:,:,:,0],[a.batch_size,FM_SIZE,FM_SIZE,1])
+        image = tf.concat([image,image,image],axis=3)
+        if a.aspect_ratio != 1.0:
+            # upscale to correct aspect ratio
+            size = [FM_SIZE, int(round(FM_SIZE * a.aspect_ratio))]
+            image = tf.image.resize_images(image, size=size, method=tf.image.ResizeMethod.BICUBIC)
+
+        return tf.image.convert_image_dtype(image, dtype=tf.uint8, saturate=True)
+
 
     # reverse any processing on images so they can be written to disk or displayed to user
     with tf.name_scope("convert_inputsX"):
@@ -388,6 +478,10 @@ def main():
 
     with tf.name_scope("convert_sel_auto_X"):
         converted_sel_auto_X= convert(sel_auto_X)
+    
+    with tf.name_scope("convert_im_int1"):
+        converted_sel_auto_X= convert(im_int1)
+
 
     with tf.name_scope("encode_images"):
         display_fetches = {
@@ -420,9 +514,24 @@ def main():
                                        converted_im_swapped_X, dtype=tf.string, name="im_swapped_X_pngs"),
             "sel_auto_X": tf.map_fn(tf.image.encode_png,
                                        converted_sel_auto_X, dtype=tf.string, name="sel_auto_X_pngs"),
+            "im_int1": tf.map_fn(tf.image.encode_png,
+                                       im_int1, dtype=tf.string, name="im_int1_pngs"),
+
 
 
         }
+
+    with tf.name_scope("extract_features"):
+        features_fetches = {
+            "paths": examples.paths,
+            "inputsX": converted_inputsX,
+            "sR_X2Y": sR_X2Y,
+            "eR_X2Y": eR_X2Y,
+            "inputsY": converted_inputsY,
+            "sR_Y2X": sR_Y2X,
+            "eR_Y2X": eR_Y2X,
+        }
+
 
     # summaries
     with tf.name_scope("X1_input_summary"):
@@ -450,7 +559,6 @@ def main():
     with tf.name_scope("swapped_2X_summary"):
         tf.summary.image("im_swapped_X", converted_im_swapped_X,max_outputs=3)
         tf.summary.image("sel_auto_X", converted_sel_auto_X,max_outputs=3)
-
 
     with tf.name_scope("zotherNoise_output_summary"):
         tf.summary.image("outputsX2Yp", converted_outputsX2Yp,max_outputs=3)
@@ -526,12 +634,19 @@ def main():
             max_steps = min(examples.steps_per_epoch, max_steps)
             for step in range(max_steps):
                 results = sess.run(display_fetches)
-                filesets = save_images(results)
+                filesets = save_images_interpol(results)
                 for i, f in enumerate(filesets):
                     print("evaluated image", f["name"])
                 index_path = append_index(filesets)
             print("wrote index at", index_path)
             print("rate", (time.time() - start) / max_steps)
+
+        elif a.mode == "features":
+            max_steps = min(examples.steps_per_epoch, max_steps)
+            for step in range(max_steps):
+                results = sess.run(features_fetches)
+                save_features(results)
+
         else:
             # training
             start = time.time()

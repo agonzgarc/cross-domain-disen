@@ -43,12 +43,12 @@ def create_generator_decoder_exclusive(eR, layers, generator_outputs_channels, a
                     #input = eR
                     g = tf.get_default_graph()
                     with g.gradient_override_map({"Identity": "ReverseGrad"}):
-                        input = tf.identity(eR)
+                        rectified = tf.identity(eR)
                 else:
                     #input = tf.concat([layers[-1], layers[skip_layer]], axis=3)
                     input = layers[-1]
+                    rectified = tf.nn.relu(input)
 
-                rectified = tf.nn.relu(input)
                 # [batch, in_height, in_width, in_channels] => [batch, in_height*2, in_width*2, out_channels]
                 output = gen_deconv_upsample(rectified, out_channels, a)
                 output = batchnorm(output)
@@ -77,7 +77,7 @@ def create_generator_decoder_exclusive(eR, layers, generator_outputs_channels, a
             (a.ngf * 8, 0.0),   # decoder_5: [batch, 8, 8, ngf * 8 * 2] => [batch, 16, 16, ngf * 8 * 2]
             (a.ngf * 4, 0.0),   # decoder_4: [batch, 16, 16, ngf * 8 * 2] => [batch, 32, 32, ngf * 4 * 2]
             (a.ngf * 2, 0.0),   # decoder_3: [batch, 32, 32, ngf * 4 * 2] => [batch, 64, 64, ngf * 2 * 2]
-            (a.ngf, 0.0),       # decoder_2: [batch, 64, 64, ngf * 2 * 2] => [batch, 128, 128, ngf * 2]
+            #(a.ngf, 0.0),       # decoder_2: [batch, 64, 64, ngf * 2 * 2] => [batch, 128, 128, ngf * 2]
         ]
 
 

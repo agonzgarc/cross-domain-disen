@@ -14,19 +14,20 @@ import math
 import time
 
 from ops import *
-from generatorDecoderMNIST import *
+from generatorDecoder import *
 from generatorEncoder import *
-from generatorDecoderExclusiveMNIST import *
+from generatorDecoderExclusive import *
 #from generatorNoSkip import *
 #from discriminator import *
 from discriminatorWGANGP import *
+#from vgg19 import build_vgg19
 
 import pdb
 
 EPS = 1e-12
 LOSS = 'wgan-gp'
 LAMBDA = 10
-OUTPUT_DIM = 196608 # 256x256x3
+#OUTPUT_DIM = 196608 # 256x256x3
 
 
 Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
@@ -48,6 +49,8 @@ Model = collections.namedtuple("Model", "outputsX2Y, outputsY2X,\
                                autoencoderX_grads_and_vars, autoencoderY_grads_and_vars,\
                                feat_recon_loss, feat_recon_grads_and_vars,\
                                ex_rep_loss,\
+                               sR_X2Y, sR_Y2X,\
+                               eR_X2Y, eR_Y2X,\
                                train, train_disc")
 
 def swapBackground(sR, eR, auto_output, which_direction, a):
@@ -82,12 +85,19 @@ def swapBackground(sR, eR, auto_output, which_direction, a):
 
         return swapScoreBKG, im_swapped, tf.stack(sel_auto)
 
+def compute_error(real,fake):
+    return tf.reduce_mean(tf.abs(fake-real))
+
 
 def create_model(inputsX, inputsY, a):
 
     # Modify values if images are reduced
+    IMAGE_SIZE = 128
+
     if a.red_images:
-        OUTPUT_DIM = 3072 # 32X32X3
+        IMAGE_SIZE = 32 # 32X32X3
+
+    OUTPUT_DIM = IMAGE_SIZE*IMAGE_SIZE*3 # 256x256x3
 
     # Target for inputsX is inputsY and vice versa
     targetsX = inputsY
@@ -180,6 +190,22 @@ def create_model(inputsX, inputsY, a):
             # 2x [batch, height, width, channels] => [batch, 30, 30, 1]
             predict_fakeY2X = create_discriminator(inputsY, outputsY2X, a)
 
+    #with tf. name_scope("vgg_real_X2Y"):
+        #with tf.variable_scope("vgg_19"):
+            #vgg_real_X2Y=build_vgg19(targetsX)
+
+    #with tf. name_scope("vgg_fake_X2Y"):
+        #with tf.variable_scope("vgg_19", reuse=True):
+            #vgg_fake_X2Y=build_vgg19(outputsX2Y, reuse=True)
+
+    #with tf. name_scope("vgg_real_Y2X"):
+        #with tf.variable_scope("vgg_19"):
+            #vgg_real_Y2X=build_vgg19(targetsY)
+
+    #with tf. name_scope("vgg_fake_Y2X"):
+        #with tf.variable_scope("vgg_19", reuse=True):
+            #vgg_fake_Y2X=build_vgg19(outputsY2X, reuse=True)
+
 
 
     with tf.name_scope("image_swapper_Y"):
@@ -187,7 +213,7 @@ def create_model(inputsX, inputsY, a):
                                                   auto_outputY,'X2Y', a)
     with tf.name_scope("image_swapper_X"):
         _, im_swapped_X,sel_auto_X = swapBackground(sR_X2Y, eR_X2Y,
-                                                  auto_outputX,'Y2X', a)
+                                                 auto_outputX,'Y2X', a)
 
 
     # Create generators for exclusive representation
@@ -225,7 +251,18 @@ def create_model(inputsX, inputsY, a):
     with tf.name_scope("generatorX2Y_loss"):
         genX2Y_loss_GAN = -tf.reduce_mean(predict_fakeX2Y)
         genX2Y_loss_L1 = tf.reduce_mean(tf.abs(targetsX - outputsX2Y))
-        # Same parameter for loss weighting for now
+
+        ## VGG loss at different levels
+        #p0_X2Y=compute_error(vgg_real_X2Y['input'],vgg_fake_X2Y['input'])
+        #p1_X2Y=compute_error(vgg_real_X2Y['conv1_2'],vgg_fake_X2Y['conv1_2'])/1.6
+        #p2_X2Y=compute_error(vgg_real_X2Y['conv2_2'],vgg_fake_X2Y['conv2_2'])/2.3
+        #p3_X2Y=compute_error(vgg_real_X2Y['conv3_2'],vgg_fake_X2Y['conv3_2'])/1.8
+        #p4_X2Y=compute_error(vgg_real_X2Y['conv4_2'],vgg_fake_X2Y['conv4_2'])/2.8
+        #p5_X2Y=compute_error(vgg_real_X2Y['conv5_2'],vgg_fake_X2Y['conv5_2'])*10/0.8#weights lambda are collected at 100th epoch
+        #genX2Y_loss_L1=p0_X2Y+p1_X2Y+p2_X2Y+p3_X2Y+p4_X2Y+p5_X2Y
+
+        #genX2Y_loss = genX2Y_loss_GAN * a.gan_weight + genX2Y_loss_L1 *a.l1_weight/10 # Divide by 6 here?
+
         genX2Y_loss = genX2Y_loss_GAN * a.gan_weight #+ genX2Y_loss_L1 * a.l1_weight
 
     with tf.name_scope("discriminatorX2Y_loss"):
@@ -235,7 +272,7 @@ def create_model(inputsX, inputsY, a):
         #pdb.set_trace()
         interpolates = tf.reshape(targetsX, [-1,OUTPUT_DIM]) + (alpha*differences)
         with tf.variable_scope("discriminatorX2Y", reuse=True):
-            gradients = tf.gradients(create_discriminator(inputsX,tf.reshape(interpolates,[-1,32,32,3]),a),
+            gradients = tf.gradients(create_discriminator(inputsX,tf.reshape(interpolates,[-1,IMAGE_SIZE,IMAGE_SIZE,3]),a),
                          [interpolates])[0]
         slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
                                        reduction_indices=[1]))
@@ -252,7 +289,18 @@ def create_model(inputsX, inputsY, a):
         # abs(targets - outputs) => 0
         genY2X_loss_GAN = -tf.reduce_mean(predict_fakeY2X)
         genY2X_loss_L1 = tf.reduce_mean(tf.abs(targetsY - outputsY2X))
-        # Same parameter for loss weighting for now
+
+        ## Same parameter for loss weighting for now
+        #p0_Y2X=compute_error(vgg_real_Y2X['input'],vgg_fake_Y2X['input'])
+        #p1_Y2X=compute_error(vgg_real_Y2X['conv1_2'],vgg_fake_Y2X['conv1_2'])/1.6
+        #p2_Y2X=compute_error(vgg_real_Y2X['conv2_2'],vgg_fake_Y2X['conv2_2'])/2.3
+        #p3_Y2X=compute_error(vgg_real_Y2X['conv3_2'],vgg_fake_Y2X['conv3_2'])/1.8
+        #p4_Y2X=compute_error(vgg_real_Y2X['conv4_2'],vgg_fake_Y2X['conv4_2'])/2.8
+        #p5_Y2X=compute_error(vgg_real_Y2X['conv5_2'],vgg_fake_Y2X['conv5_2'])*10/0.8#weights lambda are collected at 100th epoch
+        #genY2X_loss_L1=p0_Y2X+p1_Y2X+p2_Y2X+p3_Y2X+p4_Y2X+p5_Y2X
+
+        #genY2X_loss = genY2X_loss_GAN * a.gan_weight + genY2X_loss_L1 *a.l1_weight/10
+
         genY2X_loss = genY2X_loss_GAN * a.gan_weight #+ genX2Y_loss_L1 * a.l1_weight
 
     with tf.name_scope("discriminatorY2X_loss"):
@@ -261,7 +309,7 @@ def create_model(inputsX, inputsY, a):
         differences = tf.reshape(outputsY2X,[-1,OUTPUT_DIM])-tf.reshape(targetsY,[-1,OUTPUT_DIM])
         interpolates = tf.reshape(targetsY,[-1,OUTPUT_DIM]) + (alpha*differences)
         with tf.variable_scope("discriminatorY2X", reuse=True):
-            gradients = tf.gradients(create_discriminator(inputsY,tf.reshape(interpolates,[-1,32,32,3]),a),
+            gradients = tf.gradients(create_discriminator(inputsY,tf.reshape(interpolates,[-1,IMAGE_SIZE,IMAGE_SIZE,3]),a),
                          [interpolates])[0]
         slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
                                        reduction_indices=[1]))
@@ -271,8 +319,8 @@ def create_model(inputsX, inputsY, a):
     with tf.name_scope("generator_exclusiveX2Y_loss"):
         gen_exclusiveX2Y_loss_GAN = -tf.reduce_mean(predict_fake_exclusiveX2Y)
         # Same parameter for loss weighting for now
-        gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_weight/10
-        #gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_exclusive_weight
+        #gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_weight/10
+        gen_exclusiveX2Y_loss = gen_exclusiveX2Y_loss_GAN * a.gan_exclusive_weight
 
     with tf.name_scope("discriminator_exclusiveX2Y_loss"):
         discrim_exclusiveX2Y_loss = tf.reduce_mean(predict_fake_exclusiveX2Y) - tf.reduce_mean(predict_real_exclusiveX2Y)
@@ -281,8 +329,8 @@ def create_model(inputsX, inputsY, a):
         #pdb.set_trace()
         interpolates = tf.reshape(targetsX,[-1,OUTPUT_DIM]) + (alpha*differences)
         with tf.variable_scope("discriminator_exclusiveX2Y", reuse=True):
-            gradients = tf.gradients(create_discriminator(inputsX,tf.reshape(interpolates,[-1,32,32,3]),a),
-                         [interpolates])[0]
+            gradients = tf.gradients(create_discriminator(inputsX,tf.reshape(interpolates,[-1,IMAGE_SIZE,IMAGE_SIZE,3]),a),
+                             [interpolates])[0]
         slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
                                        reduction_indices=[1]))
         gradient_penalty = tf.reduce_mean((slopes-1.)**2)
@@ -291,8 +339,8 @@ def create_model(inputsX, inputsY, a):
     with tf.name_scope("generator_exclusiveY2X_loss"):
         gen_exclusiveY2X_loss_GAN = -tf.reduce_mean(predict_fake_exclusiveY2X)
         # Same parameter for loss weighting for now
-        gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_weight/10
-        #gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_exclusive_weight
+        #gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_weight/10
+        gen_exclusiveY2X_loss = gen_exclusiveY2X_loss_GAN * a.gan_exclusive_weight
 
 
     with tf.name_scope("discriminator_exclusiveY2X_loss"):
@@ -302,8 +350,8 @@ def create_model(inputsX, inputsY, a):
         #pdb.set_trace()
         interpolates = tf.reshape(targetsX,[-1,OUTPUT_DIM]) + (alpha*differences)
         with tf.variable_scope("discriminator_exclusiveY2X", reuse=True):
-            gradients = tf.gradients(create_discriminator(inputsX,tf.reshape(interpolates,[-1,32,32,3]),a),
-                         [interpolates])[0]
+            gradients = tf.gradients(create_discriminator(inputsX,tf.reshape(interpolates,[-1,IMAGE_SIZE,IMAGE_SIZE,3]),a),
+                             [interpolates])[0]
         slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients),
                                        reduction_indices=[1]))
         gradient_penalty = tf.reduce_mean((slopes-1.)**2)
@@ -450,6 +498,10 @@ def create_model(inputsX, inputsY, a):
         outputsY2Xp=outputsY2Xp,
         outputs_exclusiveX2Y=outputs_exclusiveX2Y,
         outputs_exclusiveY2X=outputs_exclusiveY2X,
+        sR_X2Y=sR_X2Y,
+        sR_Y2X=sR_Y2X,
+        eR_X2Y=eR_X2Y,
+        eR_Y2X=eR_Y2X,
         auto_outputX = auto_outputX,
         autoencoderX_loss=ema.average(autoencoderX_loss),
         autoencoderX_grads_and_vars=autoencoderX_grads_and_vars,
