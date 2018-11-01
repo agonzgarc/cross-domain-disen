@@ -1,1 +1,1 @@
-# DisenGAN
+# Cross-Domain disentantanglement network
