@@ -14,7 +14,7 @@ import math
 import time
 
 from maxpool import *
-import pdb
+
 
 def preprocess(image):
     with tf.name_scope("preprocess"):
@@ -41,6 +41,10 @@ def deprocess_lab(L_chan, a_chan, b_chan):
         # this is axis=3 instead of axis=2 because we process individual images but deprocess batches
         return tf.stack([(L_chan + 1) / 2 * 100, a_chan * 110, b_chan * 110], axis=3)
 
+def flatten(input):
+    return tf.reshape(input, [-1, np.prod(input.get_shape().as_list()[1:])])
+
+
 
 def augment(image, brightness):
     # (a, b) color channels, combine with L channel and convert to rgb
@@ -56,6 +60,10 @@ def discrim_conv(batch_input, out_channels, stride):
     return tf.layers.conv2d(padded_input, out_channels, kernel_size=4, strides=(stride, stride), padding="valid", kernel_initializer=tf.random_normal_initializer(0, 0.02))
 
 def discrim_fc(batch_input, out_channels=1):
+    # With no initializer argument, it uses glorot
+   return tf.layers.dense(batch_input, out_channels)
+
+def gen_fc(batch_input, out_channels=8):
     # With no initializer argument, it uses glorot
    return tf.layers.dense(batch_input, out_channels)
 
@@ -133,6 +141,11 @@ def n_res_blocks(batch_input, n=6):
 def batchnorm(inputs):
     return tf.layers.batch_normalization(inputs, axis=3, epsilon=1e-5, momentum=0.1, training=True, gamma_initializer=tf.random_normal_initializer(1.0, 0.02))
 
+def instnorm(inputs):
+    eps = 1e-5
+    mean, sigma = tf.nn.moments(inputs, [1, 2], keep_dims=True)
+    normalized = (inputs - mean) / (tf.sqrt(sigma) + eps)
+    return normalized
 
 def check_image(image):
     assertion = tf.assert_equal(tf.shape(image)[-1], 3, message="image must have 3 color channels")
@@ -244,4 +257,12 @@ def bias_variable(shape):
   return tf.Variable(initial)
 
 
+def mlp(input, out_dim, dtype=tf.float32, bias=True):
+        _, n = input.get_shape()
+        w = tf.get_variable('w', [n, out_dim], dtype, tf.random_normal_initializer(0.0, 0.02))
+        out = tf.matmul(input, w)
+        if bias:
+            b = tf.get_variable('b', [out_dim], initializer=tf.constant_initializer(0.0))
+            out = out + b
+        return out
 
