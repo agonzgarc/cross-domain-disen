@@ -37,7 +37,7 @@ parser.add_argument("--save_freq", type=int, default=5000, help="save model ever
 parser.add_argument("--separable_conv", action="store_true", help="use separable convolutions in the generator")
 parser.add_argument("--aspect_ratio", type=float, default=1.0, help="aspect ratio of output images (width/height)")
 parser.add_argument("--lab_colorization", action="store_true", help="split input image into brightness (A) and color (B)")
-parser.add_argument("--batch_size", type=int, default=4, help="number of images in batch")
+parser.add_argument("--batch_size", type=int, default=8, help="number of images in batch")
 parser.add_argument("--which_direction", type=str, default="AtoB", choices=["AtoB", "BtoA"])
 parser.add_argument("--ngf", type=int, default=64, help="number of generator filters in first conv layer")
 parser.add_argument("--ndf", type=int, default=64, help="number of discriminator filters in first conv layer")
@@ -418,14 +418,14 @@ def main():
     tf.summary.scalar("code_eR_Y2X_recon_loss", model.code_eR_Y2X_recon_loss)
     tf.summary.scalar("code_recon_loss", model.code_recon_loss)
 
-    for var in tf.trainable_variables():
-        tf.summary.histogram(var.op.name + "/values", var)
+    #for var in tf.trainable_variables():
+        #tf.summary.histogram(var.op.name + "/values", var)
 
-    for grad, var in model.discrimX2Y_grads_and_vars + model.genX2Y_grads_and_vars:
-        tf.summary.histogram(var.op.name + "/gradientsX2Y", grad)
+    #for grad, var in model.discrimX2Y_grads_and_vars + model.genX2Y_grads_and_vars:
+        #tf.summary.histogram(var.op.name + "/gradientsX2Y", grad)
 
-    for grad, var in model.discrimY2X_grads_and_vars + model.genY2X_grads_and_vars:
-        tf.summary.histogram(var.op.name + "/gradientsY2X", grad)
+    #for grad, var in model.discrimY2X_grads_and_vars + model.genY2X_grads_and_vars:
+        #tf.summary.histogram(var.op.name + "/gradientsY2X", grad)
 
     with tf.name_scope("parameter_count"):
         parameter_count = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
