@@ -10,6 +10,8 @@ Based on [this pix2pix implementation](https://github.com/affinelayer/pix2pix-te
 Please follow the setup described [here](https://github.com/affinelayer/pix2pix-tensorflow/).
 Tested with Tensorflow 1.8.0.
 
+See DATA/MNISTCDCB/ for example images of our MNIST-CD/CB dataset.
+
 ## Usage
 
 In order to train a MODEL using DATA, run
