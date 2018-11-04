@@ -1,4 +1,4 @@
-# Cross-Domain disentantanglement network
+# Cross-domain disentantanglement network
 
 Code for the paper ["Image-to-image translation for cross-domain disentanglement"](https://arxiv.org/abs/1805.09730), NIPS 2018.
 
