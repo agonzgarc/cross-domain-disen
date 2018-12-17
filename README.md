@@ -46,7 +46,7 @@ Please, cite the following paper if you use this code:
 @inproceedings{gonzalez-garcia2018NIPS,
   title={Image-to-image translation for cross-domain disentanglement},
   author={Gonzalez-Garcia, Abel and van de Weijer, Joost and Bengio, Yoshua},
-  booktile={NIPS},
+  booktile={NeurIPS},
   year={2018}
 }
 ```
