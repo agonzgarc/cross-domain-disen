@@ -40,10 +40,18 @@ python run_cross_domain_disen.py \
   --input_dir DATA/test/  
 ```
 
+## Pre-trained models
+[MNIST-CD/CB](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/MNIST-CDCB.tar.gz)
+[Cars](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/cars.tar.gz)
+[Chairs](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/chairs.tar.gz)
+[Facades](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/facades.tar.gz)
+[Maps](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/maps.tar.gz)
+
+
 ## Citation
 Please, cite the following paper if you use this code:
 ```
-@inproceedings{gonzalez-garcia2018NIPS,
+@inproceedings{gonzalez-garcia2018NeurIPS,
   title={Image-to-image translation for cross-domain disentanglement},
   author={Gonzalez-Garcia, Abel and van de Weijer, Joost and Bengio, Yoshua},
   booktile={NeurIPS},
