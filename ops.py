@@ -13,8 +13,6 @@ import collections
 import math
 import time
 
-from maxpool import *
-
 
 def preprocess(image):
     with tf.name_scope("preprocess"):
@@ -74,19 +72,6 @@ def gen_conv(batch_input, out_channels, a):
         return tf.layers.separable_conv2d(batch_input, out_channels, kernel_size=4, strides=(2, 2), padding="same", depthwise_initializer=initializer, pointwise_initializer=initializer)
     else:
         return tf.layers.conv2d(batch_input, out_channels, kernel_size=4, strides=(2, 2), padding="same", kernel_initializer=initializer)
-
-def gen_conv_pool(batch_input, out_channels, a):
-    # [batch, in_height, in_width, in_channels] => [batch, out_height, out_width, out_channels]
-    initializer = tf.random_normal_initializer(0, 0.02)
-    conv_res =  tf.layers.conv2d(batch_input, out_channels, kernel_size=4, strides=(1, 1), padding="same", kernel_initializer=initializer)
-    output, arg = tf.nn.max_pool_with_argmax(conv_res, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='maxpool')
-    return output, arg
-
-def gen_conv_unpool(batch_input, arg, out_channels, a):
-    # [batch, in_height, in_width, in_channels] => [batch, out_height, out_width, out_channels]
-    initializer = tf.random_normal_initializer(0, 0.02)
-    unpooled_input = unpool_with_argmax(batch_input, arg, name = 'maxunpool')
-    return tf.layers.conv2d(unpooled_input, out_channels, kernel_size=4, strides=(1, 1), padding="same", kernel_initializer=initializer)
 
 def gen_deconv(batch_input, out_channels, a):
     # [batch, in_height, in_width, in_channels] => [batch, out_height, out_width, out_channels]
