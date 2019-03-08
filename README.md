@@ -41,7 +41,9 @@ python run_cross_domain_disen.py \
 ```
 
 ## Pre-trained models
-[MNIST-CD/CB](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/MNIST-CDCB.tar.gz)
+[MNIST-CD/CB (w/ GRL)](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/MNIST-CDCB-GRL.tar.gz)
+
+[MNIST-CD/CB (w/o GRL)](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/MNIST-CDCB-NoGRL.tar.gz)
 
 [Cars](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/cars.tar.gz)
 
