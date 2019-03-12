@@ -54,7 +54,7 @@ python run_cross_domain_disen.py \
 [Maps](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/maps.tar.gz)
 
 ## Dataset
-[MNIST-CD/CB](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/MNIST-CDCB-256Ims.tar.gz
+[MNIST-CD/CB](http://www.cvc.uab.es/lamp/wp-content/shared_files/cross-domain-disen/MNIST-CDCB-256Ims.tar.gz)
 
 ## Citation
 Please, cite the following paper if you use this code:
