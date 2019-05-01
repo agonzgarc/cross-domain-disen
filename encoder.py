@@ -42,7 +42,7 @@ def create_generator_encoder(generator_inputs, a):
     # Exclusive part of representation uses FC layer
     with tf.variable_scope("encoder_exclusive"):
         rinput = tf.reshape(rectified, [-1, 16*16*8*a.ngf])
-        outputE = gen_fc(rinput,out_channels=128)
+        outputE = gen_fc(rinput,out_channels=8)
 
 
     sR = output
